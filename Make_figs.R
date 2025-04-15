@@ -1,510 +1,1157 @@
 rm(list=ls())
-
 source("CNP_lake_functions.R")
 
-# Step 1: Allochtonous flows ----
+Scale_numeric=function(x){
+  d[,colnames(dplyr::select_if(d, is.numeric))]=
+    apply(d[,colnames(dplyr::select_if(d, is.numeric))],2,
+          function(x){return((x-mean(x,na.rm=T))/sd(x,na.rm = T))})
+  return(d)
+}
 
-## >> Along gradient ----
+Add_name_panel=function(d){
+  d$Name_panel=paste0("Allochtonous flows: ",d$alpha_A," N:C, ",d$beta_A," P:C")
+  
+  d=d%>%dplyr::mutate(., Name_panel=recode_factor(Name_panel,
+                                                  "Allochtonous flows: high N:C, high P:C"="Nutrient rich flows",
+                                                  "Allochtonous flows: low N:C, high P:C"="Phosphorus rich flows",
+                                                  "Allochtonous flows: high N:C, low P:C"="Nitrogen rich flows",
+                                                  "Allochtonous flows: low N:C, low P:C"="Carbon rich flows"))
+  return(d)
+}
 
-d=read.table("../Table/Simulation_allochtonous.csv",sep=";")
+Get_data_thresholds=function(d,color_label=c("A","A","B","A")){
+  
+  tibble(beta_A=c("low","high","low","high"),alpha_A=c("high","low","low","high"),color_label=color_label,
+         threshold=c(min(d$ID[which(d$beta_A=="low" & d$alpha_A=="high" & d$Limitation_Decompo %in% c("N","P"))]),
+                     min(d$ID[which(d$beta_A=="high" & d$alpha_A=="low" & d$Limitation_Decompo %in% c("N","P"))]),
+                     min(d$ID[which(d$beta_A=="low" & d$alpha_A=="low" & d$Limitation_Decompo %in% c("N","P"))]),
+                     min(d$ID[which(d$beta_A=="high" & d$alpha_A=="high" & d$Limitation_Decompo %in% c("N","P"))])))%>%
+    Add_name_panel(.)
+  
+}
+
+
+scaling_vector_x_0_1=function(x){
+  return((x-min(x,na.rm = T))/(max(x,na.rm = T)-min(x,na.rm = T)))
+}
+
+Add_limitation_label=function(p){
+  return(
+    
+    p+  geom_label(data=tibble(Name_panel=c("Carbon rich flows",
+                                            "Phosphorus rich flows",
+                                            "Nitrogen rich flows"),
+                               x=c(45,45,53),y=c(1.15,1.15,1.15),label=c("N-limited","N-limited","P-limited")),
+                   aes(x=x,y=y,label=label))+
+      geom_label(data=tibble(Name_panel=c("Carbon rich flows",
+                                          "Phosphorus rich flows",
+                                          "Nitrogen rich flows",
+                                          "Nutrient rich flows"),
+                             x=c(10,10,20,32),y=c(1.15,1.15,1.15,1.15),label=rep("C-limited",4)),
+                 aes(x=x,y=y,label=label))+ylim(0,1.2)
+  )
+}
+
+# ------------------ Final figures ----
+
+## Along gradient of ID: densities, feedbacks, niche, CNP seston ----
+
+d=read.table("../Table/Simulation_allochtonous.csv",sep=";")%>%
+  mutate(., 
+         alpha_A=ifelse(alpha_A==.02,"low","high"),
+         beta_A=ifelse(beta_A==.002,"low","high"),
+         Simulation_ID=as.factor(Simulation_ID)
+  )%>%
+  dplyr::filter(., Simulation_ID==3)%>%
+  Add_name_panel(.)%>%
+  dplyr::group_by(., Name_panel)%>%
+  dplyr::mutate(., 
+                Decomposers_C_scaled=scaling_vector_x_0_1(Decomposers_C),
+                Non_fixers_C_scaled=scaling_vector_x_0_1(Non_fixers_C),
+                PC_detritus_scaled=scaling_vector_x_0_1(PC_detritus),
+                NC_detritus_scaled=scaling_vector_x_0_1(NC_detritus),
+                Fixers_C_scaled=scaling_vector_x_0_1(Fixers_C),
+                Frac_decomp_scaled=scaling_vector_x_0_1(Fixers_C),
+                NP_threshold_NF_scaled=scaling_vector_x_0_1(NP_threshold_NF),
+                PC_diff_scaled=scaling_vector_x_0_1(beta_B-PC_detritus),
+                NC_diff_scaled=scaling_vector_x_0_1(alpha_B-NC_detritus),
+  )
+
+color_graph=c("C"="#D2B96F","N"="#8EBAEF")
+
+table("alpha"=d$alpha_A,"beta"=d$beta_A,d$Limitation_Decompo)
+
+p1=ggplot(NULL)+
+  geom_rect(data=Get_data_thresholds(d,c("B","A","A","C")),
+            aes(xmin = threshold,xmax=65,ymin=-Inf,ymax = Inf,fill=color_label),lwd=1,alpha=.3)+
+  geom_rect(data=Get_data_thresholds(d,c("B","A","A","C")),
+            aes(xmin = 0,xmax=threshold,ymin=-Inf,ymax = Inf),lwd=1,alpha=.3,fill="#FFF4D5")+
+  geom_line(data=d%>%melt(.,measure.vars=c("Decomposers_C_scaled","Non_fixers_C_scaled","Fixers_C_scaled"),
+                          value.name = "Species_C",variable.name = "Species_name"),
+            aes(x=ID,y=Species_C,color=Species_name,group=interaction(Species_name,beta_A)),lwd=1)+
+  geom_point(data=d%>%melt(.,measure.vars=c("Decomposers_C_scaled","Non_fixers_C_scaled","Fixers_C_scaled"),
+                           value.name = "Species_C",variable.name = "Species_name")%>%dplyr::filter(., ID %in% unique(.$ID)[seq(1,100,by=10)]),
+             aes(x=ID,y=Species_C,color=Species_name),size=3,shape=21)+
+  scale_shape_manual(values = c(23,21,22))+
+  facet_wrap(.~Name_panel,scales = "free")+#,
+  the_theme2+
+  labs(x="Allochtonous detritus inputs (ID)",y="Density of organisms (scaled)",color="")+
+  guides(fill="none")+
+  scale_fill_manual(values=c("A"="#A7C3D6","B"="#AA8DB5","C"="transparent"))+
+  scale_color_manual(values=c("#FFA963","#80BFB5","#5F9203"),labels=c("Decomposers","Non-fixers","Fixers"))
+
+
+ggsave("../Figures/Final_figs/Along_ID_gradient_density.pdf",Add_limitation_label(p1),width = 8,height = 7)
+
+
+p1=ggplot(NULL)+
+  geom_rect(data=Get_data_thresholds(d,c("B","A","A","C")),
+            aes(xmin = threshold,xmax=65,ymin=-Inf,ymax = Inf,fill=color_label),lwd=1,alpha=.3)+
+  geom_rect(data=Get_data_thresholds(d,c("B","A","A","C")),
+            aes(xmin = 0,xmax=threshold,ymin=-Inf,ymax = Inf),lwd=1,alpha=.3,fill="#FFF4D5")+
+  geom_line(data=d%>%melt(.,measure.vars=c("Non_fixers_C_scaled","Fixers_C_scaled","NC_diff_scaled","PC_diff_scaled","NP_threshold_NF_scaled"),
+                          value.name = "Species_C",variable.name = "Species_name"),
+            aes(x=ID,y=Species_C,color=Species_name,group=interaction(Species_name)),lwd=1)+
+  geom_point(data=d%>%melt(.,measure.vars=c("Non_fixers_C_scaled","Fixers_C_scaled","NC_diff_scaled","PC_diff_scaled","NP_threshold_NF_scaled"),
+                           value.name = "Species_C",variable.name = "Species_name")%>%dplyr::filter(., ID %in% unique(.$ID)[seq(1,100,by=10)]),
+             aes(x=ID,y=Species_C,color=Species_name,shape=alpha_A),size=3)+
+  scale_shape_manual(values = c(23,23))+
+  facet_wrap(.~Name_panel,scales = "free")+#,
+  the_theme2+
+  labs(x="Allochtonous detritus inputs (ID)",y="Density of organisms (scaled)",color="")+
+  guides(fill="none",shape="none")+
+  scale_fill_manual(values=c("A"="#A7C3D6","B"="#AA8DB5","C"="transparent"))+
+  scale_color_manual(values=c("#80BFB5","#5F9203","#FFBA80","#863886","#84412A"),
+                     labels=c("Non-fixers","Fixers",
+                              expression(paste(alpha[B]," - ",alpha[D])),
+                              expression(paste(beta[B]," - ",beta[D])),
+                              "Nitrogen/Phosphorus"))
+
+ggsave("../Figures/Final_figs/Along_ID_gradient_mecanisms.pdf",Add_limitation_label(p1),width = 8,height = 7)
+
+
+# Indirect effects
+
+color_graph=c("C"="#D2B96F","N"="#8EBAEF")
+
+p1=ggplot(NULL)+
+  geom_rect(data=Get_data_thresholds(d,c("B","A","A","C")),
+            aes(xmin = threshold,xmax=65,ymin=-Inf,ymax = Inf,fill=color_label),lwd=1,alpha=.3)+
+  geom_rect(data=Get_data_thresholds(d,c("B","A","A","C")),
+            aes(xmin = 0,xmax=threshold,ymin=-Inf,ymax = Inf),lwd=1,alpha=.3,fill="#FFF4D5")+
+  geom_line(data=d%>%melt(.,measure.vars=c(colnames(d)[grep("indirect",colnames(d))])[c(1:2,5:6)],
+                          value.name = "Species_C",variable.name = "Species_name"),
+            aes(x=ID,y=Species_C,color=Species_name,group=interaction(Species_name,beta_A)),lwd=1)+
+  geom_point(data=d%>%melt(.,measure.vars=c(colnames(d)[grep("indirect",colnames(d))])[c(1:2,5:6)],
+                           value.name = "Species_C",variable.name = "Species_name")%>%dplyr::filter(., ID %in% unique(.$ID)[seq(1,100,by=10)]),
+             aes(x=ID,y=Species_C,color=Species_name),size=3,shape=21)+
+  scale_shape_manual(values = c(23,23))+
+  facet_wrap(.~Name_panel,scales = "free")+#,
+  the_theme2+
+  geom_hline(yintercept = 0)+
+  labs(x="Allochtonous detritus inputs (ID)",y="Indirect effects between \n functional groups",color="")+
+  guides(fill="none",shape="none")+
+  scale_fill_manual(values=c("A"="#A7C3D6","B"="#AA8DB5","C"="transparent"))+
+  scale_color_manual(values=c("#FFBA80","#80BFB5",
+                              "#A95F00","#216156"),
+                     label=c("Decomposers on fixers",
+                             "Fixers on decomposers",
+                             "Decomposers on non-fixers",
+                             "Non-fixers on decomposers"))+
+  guides(color=guide_legend(ncol=2))+
+  geom_label(data=tibble(Name_panel=c("Carbon rich flows",
+                                      "Phosphorus rich flows",
+                                      "Nitrogen rich flows"),
+                         x=c(45,45,53),y=c(.2,.2,.2),label=c("N-limited","N-limited","P-limited")),
+             aes(x=x,y=y,label=label))+
+  geom_label(data=tibble(Name_panel=c("Carbon rich flows",
+                                      "Phosphorus rich flows",
+                                      "Nitrogen rich flows",
+                                      "Nutrient rich flows"),
+                         x=c(10,10,20,32),y=c(.2,.2,.2,.2),label=rep("C-limited",4)),
+             aes(x=x,y=y,label=label))
+
+
+
+ggsave("../Figures/Final_figs/Along_ID_gradient_indirect.pdf",p1,width = 8,height = 7)
+
+p1=ggplot(NULL)+
+  geom_rect(data=Get_data_thresholds(d,c("B","A","A","C")),
+            aes(xmin = threshold,xmax=65,ymin=-Inf,ymax = Inf,fill=color_label),lwd=1,alpha=.3)+
+  geom_rect(data=Get_data_thresholds(d,c("B","A","A","C")),
+            aes(xmin = 0,xmax=threshold,ymin=-Inf,ymax = Inf),lwd=1,alpha=.3,fill="#FFF4D5")+
+  geom_line(data=d%>%melt(.,measure.vars=c("NC_detritus_scaled","PC_detritus_scaled"),
+                          value.name = "Species_C",variable.name = "Species_name"),
+            aes(x=ID,y=Species_C,color=Species_name,group=interaction(Species_name,beta_A)),lwd=1)+
+  geom_point(data=d%>%melt(.,measure.vars=c("NC_detritus_scaled","PC_detritus_scaled"),
+                           value.name = "Species_C",variable.name = "Species_name")%>%dplyr::filter(., ID %in% unique(.$ID)[seq(1,100,by=10)]),
+             aes(x=ID,y=Species_C,color=Species_name),size=3,shape=21)+
+  scale_shape_manual(values = c(23,21,22))+
+  facet_wrap(.~Name_panel,scales = "free")+#,
+  #labeller = label_bquote(cols=N:C~allochtonous~low~(alpha[A])~P:C~allochtonous~.(as.character(beta_A))~(beta[A])))+
+  the_theme2+
+  labs(x="Allochtonous detritus inputs (ID)",y="Elemental ratios (scaled)",color="")+
+  guides(fill="none")+
+  scale_fill_manual(values=c("A"="#A7C3D6","B"="#AA8DB5","C"="transparent"))+
+  scale_color_manual(values=c("black","blue"),labels=c("N:C detritus","P:C detritus"))
+
+ggsave("../Figures/Final_figs/Along_ID_gradient_NC_PC.pdf",Add_limitation_label(p1),width = 7,height = 7)
+
+#Computing changes in species niche' as a proxy of indirect effects
+
+d=read.table("../Table/Simulation_allochtonous.csv",sep=";")%>%
+  mutate(., 
+         alpha_A=ifelse(alpha_A==.02,"low","high"),
+         beta_A=ifelse(beta_A==.002,"low","high"),
+         Simulation_ID=as.factor(Simulation_ID)
+  )%>%
+  dplyr::filter(., Simulation_ID==3)
+
 table(d$Limitation_Decompo)
-table(d$Limitation_NF)
+d2=read.table("../Table/Simulation_allochtonous_species_alone.csv",sep=";")%>%
+  mutate(., 
+         alpha_A=ifelse(alpha_A==.02,"low","high"),
+         beta_A=ifelse(beta_A==.002,"low","high"),
+         Simulation_ID=as.factor(Simulation_ID)
+  )%>%
+  dplyr::filter(., Simulation_ID==3)
 
-list_plots=list()
-id=1
+d$Name_panel=paste0("Allochtonous flows: ",d$alpha_A," N:C, ",d$beta_A," P:C")
 
-for (x2 in colnames(d)[c(1,4,7,27,13,14)]){
-  
-  for (x1 in unique(d$Simulation_ID)){
-    
-    d2=Plot_with_limitation(d%>%filter(., Simulation_ID==x1),
-                         c("IN","IP","ID")[x1],x2)
-    
-    list_plots[[id]]=d2$p+
-             geom_line(data=d2$data,
-                       aes(x=value_driver,y=value_y))+
-             the_theme+
-             labs(x=c("IN","IP","ID")[x1],y=x2)+theme(legend.position = "none")
-    
-    id=id+1
-    
-  }
+for (k in unique(d2$Which_species_alone)[1:3]){
+  d2_fil=dplyr::filter(d2,Which_species_alone==k)
+  d$NIntA=2*(d[,paste0(k,"_C")]-d2_fil[,paste0(k,"_C")])/(d2_fil[,paste0(k,"_C")]+abs((d[,paste0(k,"_C")]-d2_fil[,paste0(k,"_C")])))
+  colnames(d)[ncol(d)]= paste0("NIntA_",k)
 }
 
-p_tot=ggarrange(plotlist=list_plots,ncol = 3,nrow = 6,common.legend = T,legend="none")
-ggsave("../Figures/Allochtonous_flows1.pdf",p_tot,width = 10,height = 12)
+d=d%>%Add_name_panel(.)%>%
+  dplyr::group_by(., Name_panel)
+
+p1=ggplot(NULL)+
+  geom_rect(data=Get_data_thresholds(d,c("B","A","A","C")),
+            aes(xmin = threshold,xmax=65,ymin=-Inf,ymax = Inf,fill=color_label),lwd=1,alpha=.3)+
+  geom_rect(data=Get_data_thresholds(d,c("B","A","A","C")),
+            aes(xmin = 0,xmax=threshold,ymin=-Inf,ymax = Inf),lwd=1,alpha=.3,fill="#FFF4D5")+
+  geom_line(data=d%>%melt(.,measure.vars=colnames(d)[grep("NInt",colnames(d))],
+                          value.name = "Species_C",variable.name = "Species_name"),
+            aes(x=ID,y=Species_C,color=Species_name),lwd=1)+
+  geom_point(data=d%>%melt(.,measure.vars=colnames(d)[grep("NInt",colnames(d))],
+                           value.name = "Species_C",variable.name = "Species_name")%>%
+               dplyr::filter(., ID %in% unique(.$ID)[seq(1,100,by=10)]),
+             aes(x=ID,y=Species_C,color=Species_name),size=3,shape=21)+
+  scale_pattern_manual(values = c("C" = "none", "N" = "stripe"))+
+  facet_wrap(.~Name_panel,scales = "free")+#,
+  #labeller = label_bquote(cols=N:C~allochtonous~low~(alpha[A])~P:C~allochtonous~.(as.character(beta_A))~(beta[A])))+
+  the_theme2+
+  geom_hline(yintercept = 0)+
+  labs(x="Allochtonous detritus inputs (ID)",y="Change in organism niche",color="")+
+  guides(fill="none",shape="none")+
+  scale_fill_manual(values=c("A"="#A7C3D6","B"="#AA8DB5","C"="transparent"))+
+  scale_color_manual(values=c("#FFA963","#80BFB5","#5F9203"),labels=c("Decomposers","Non-fixers","Fixers"))
+
+ggsave("../Figures/Final_figs/Along_ID_gradient_niche.pdf",Add_limitation_label(p1)+ylim(-.5,2),width = 8,height = 7)
 
 
-d=read.table("../Table/Simulation_allochtonous.csv",sep=";")
-table(d$Limitation_Decompo)
-table(d$Limitation_NF)
 
-list_plots=list()
-id=1
+d=read.table("../Table/Simulation_allochtonous.csv",sep=";")%>%
+  dplyr::mutate(., 
+                beta_diff=.$alpha_B-.$PC_detritus,
+                alpha_diff=.$beta_B-.$NC_detritus)%>%
+  mutate(., 
+         alpha_A=ifelse(alpha_A==.02,"low","high"),
+         beta_A=ifelse(beta_A==.002,"low","high"),
+         Simulation_ID=as.factor(Simulation_ID)
+  )%>%
+  Add_name_panel(.)%>%
+  dplyr::group_by(., Name_panel)%>%
+  dplyr::filter(.,Simulation_ID==3)%>%
+  dplyr::mutate(., 
+                Decomposers_C_scaled=scaling_vector_x_0_1(Decomposers_C),
+                Non_fixers_C_scaled=scaling_vector_x_0_1(Non_fixers_C),
+                beta_diff_scaled=scaling_vector_x_0_1(beta_diff),
+                alpha_diff_scaled=scaling_vector_x_0_1(alpha_diff),
+                Fixers_C_scaled=scaling_vector_x_0_1(Fixers_C),
+                PC_diff_scaled=scaling_vector_x_0_1(beta_B-PC_detritus),
+                NC_diff_scaled=scaling_vector_x_0_1(alpha_B-NC_detritus),
+                NC_seston_scaled=scaling_vector_x_0_1(1/CN_seston),
+                PC_seston_scaled=scaling_vector_x_0_1(1/CP_seston),
+                NP_seston_scaled=scaling_vector_x_0_1(NP_seston),
+                PC_seston=1/CP_seston,
+                NC_seston=1/CN_seston)
 
-for (x2 in colnames(d)[c(21:26)]){
-  
-  for (x1 in unique(d$Simulation_ID)){
-    
-    d2=Plot_with_limitation(d%>%filter(., Simulation_ID==x1),
-                            c("IN","IP","ID")[x1],x2)
-    
-    list_plots[[id]]=d2$p+
-      geom_line(data=d2$data,
-                aes(x=value_driver,y=value_y))+
-      the_theme+
-      labs(x=c("IN","IP","ID")[x1],y=x2)+theme(legend.position = "none")
-    
-    id=id+1
-    
-  }
+color_graph=c("C"="#D2B96F","N"="#8EBAEF")
+
+Rename_seston=function(d){
+  return(d%>%mutate(., Species_name=recode_factor(Species_name,
+                                                  "CN_seston"="Seston C:N",
+                                                  "NC_seston"="Seston N:C",
+                                                  "PC_seston"="Seston P:C",
+                                                  "NP_seston"="Seston N:P",
+                                                  "CP_seston"="Seston C:P",
+                                                  "Deviation_Redfield"="Deviation from Redfield ratio")))
 }
 
-p_tot=ggarrange(plotlist=list_plots,ncol = 3,nrow = 6,common.legend = T,legend="none")
-ggsave("../Figures/Allochtonous_flows2.pdf",p_tot,width = 10,height = 12)
-
-
-## >> Along gradient, indirect effects ----
-
-pdf("../Figures/Allochtonous_flows_indirect.pdf",width = 8,height = 8)
-d=read.table("../Table/Simulation_allochtonous_indirect.csv",sep=";")%>%
-  filter(., Type=="A_to_I")
-
-list_plots=list()
-id=1
-par(mfrow=c(3,3))
-for (x1 in unique(d$Simulation_ID)){
+for (k in 1:4){
   
-  d_fil=d%>%filter(., Simulation_ID==x1)%>%
-    add_column(., Driver=.[,c("IN","IP","ID")[x1]])%>%
-    filter(., Driver %in% unique(.$Driver)[c(ifelse(x1==2,11,5),15,100)])
+  d_plot=dplyr::filter(d,alpha_A==c("high","low","low","high")[k],
+                       beta_A==c("low","high","low","high")[k])
   
-  Plot_net_effects(d_fil[1,],param="",compute_effects = F,Indirect = d_fil[1,])
-  mtext(paste0("Low ",c("IN","IP","ID")[x1]))
-  Plot_net_effects(d_fil[2,],param="",compute_effects = F,Indirect = d_fil[2,])
-  mtext(paste0("Medium ",c("IN","IP","ID")[x1]))
-  Plot_net_effects(d_fil[3,],param="",compute_effects = F,Indirect = d_fil[3,])
-  mtext(paste0("High ",c("IN","IP","ID")[x1]))
-  
-  id=id+1
-  
-}
-dev.off()
-
-
-## >> 2D gradient CNP seston ----
-
-d=read.table("../Table/Simulation_allochtonous_2D.csv",sep=";")
-
-d%>%
-  filter(., d$Limitation_Decompo=="P" & converged_==T)%>%
-  ggplot(.)+
-  geom_tile(aes(x=IN,y=ID,fill=CP_seston))+
-  scale_fill_viridis_c(option = "A")+
-  facet_wrap(.~IP,scales = "free")+
-  the_theme
-
-d%>%
-  filter(., d$Limitation_Decompo=="P" & converged_==T)%>%
-  ggplot(.)+
-  geom_tile(aes(x=IN,y=ID,fill=CN_seston))+
-  scale_fill_viridis_c(option = "A")+
-  facet_wrap(.~IP,scales = "free")+
-  the_theme
-
-d%>%
-  filter(., d$Limitation_Decompo=="C" & converged_==T)%>%
-  ggplot(.)+
-  geom_tile(aes(x=IN,y=ID,fill=NP_seston))+
-  scale_fill_viridis_c(option = "A")+
-  facet_wrap(.~IP,scales = "free")+
-  the_theme
-
-
-# Step 2: Stoichio allochtonous ----
-
-
-d=read.table("../Table/Simulation_allochtonous_ratios.csv",sep=";")
-
-list_plots=list()
-id=1
-
-for (x2 in colnames(d)[c(1,4,7,27,13,14,21:26)]){
-  
-  for (x1 in unique(d$Ratio_changed)){
-    
-    d2=Plot_with_limitation(d%>%filter(., Ratio_changed==x1,ID==10),
-                            c("beta_allo","alpha_allo")[ifelse(x1=="PC",1,2)],x2)
-    
-    list_plots[[id]]=d2$p+
-      geom_line(data=d2$data,
-                aes(x=value_driver,y=value_y))+
-      the_theme+
-      labs(x=c("P:C allochtonous detritus","N:C allochtonous detritus")[ifelse(x1=="PC",1,2)],
-           y=x2)+theme(legend.position = "none")
-    
-    id=id+1
-    
-  }
+  assign(paste0("p",k),
+         ggplot(NULL)+
+           geom_rect(data=Get_data_thresholds(d,c("B","A","A","C"))[k,],
+                     aes(xmin = threshold,xmax=65,ymin=-Inf,ymax = Inf,fill=color_label),lwd=1,alpha=.3)+
+           geom_rect(data=Get_data_thresholds(d,c("B","A","A","C"))[k,],
+                     aes(xmin = 0,xmax=threshold,ymin=-Inf,ymax = Inf),lwd=1,alpha=.3,fill="#FFF4D5")+
+           geom_line(data=d_plot%>%melt(.,measure.vars=c("PC_seston","NC_seston"),
+                                   value.name = "Species_C",variable.name = "Species_name")%>%Rename_seston(.),
+                     aes(x=ID,y=Species_C,color=interaction(beta_A,alpha_A),group=interaction(beta_A,alpha_A)),lwd=1)+
+           geom_point(data=d_plot%>%melt(.,measure.vars=c("NC_seston",
+                                                     "PC_seston"),
+                                    value.name = "Species_C",variable.name = "Species_name")%>%
+                        dplyr::filter(., ID %in% unique(.$ID)[seq(1,100,by=10)])%>%Rename_seston(.),
+                      aes(x=ID,y=Species_C,color=interaction(beta_A,alpha_A),shape=beta_A),size=3)+
+           scale_shape_manual(values = c(23,23))+
+           facet_wrap(Species_name~.,scales = "free",switch = "y")+
+           geom_hline(data=tibble(Species_name=c("Seston N:C","Seston P:C"),
+                                  Ratio=c(1/16,1/106)),aes(yintercept = Ratio))+
+           the_theme2+
+           labs(x="Allochtonous detritus inputs (ID)",y="",color="")+
+           guides(fill="none",shape="none",color="none")+
+           scale_fill_manual(values=c("A"="#A7C3D6","B"="#AA8DB5","C"="transparent"))+
+           theme(strip.text.x = element_blank(),strip.placement = "outside")+
+           scale_color_manual(values=c("black","blue"))
+         )
 }
 
-p_tot=ggarrange(plotlist=list_plots,ncol = 2,nrow = 10,common.legend = T,legend="none")
-ggsave("../Figures/Allochtonous_flows_ratio.pdf",p_tot,width = 7,height = 20)
+p_tot=ggarrange(p4+ggtitle(" Nitrogen rich flows"),
+                p1+ggtitle(" Phosphorus rich flows"),
+                p2+ggtitle(" Carbon rich flows"),
+                p3+ggtitle(" Nutrient rich flows"),ncol=2,nrow=2)
+
+ggsave("../Figures/Final_figs/Along_ID_gradient_CNP.pdf",p_tot,width = 12,height = 7)
+
+
+d2=dplyr::filter(d)%>%
+  melt(., measure.vars=c("Fixers_C","Decomposers_C","Non_fixers_C","Detritus_C"))%>%
+  dplyr::group_by(.,ID,Name_panel)%>%
+  mutate(., value=100*value/sum(value))
+
+p1=ggplot(d2)+
+  geom_area(aes(x=ID,y=value,fill=variable),alpha=.5)+
+  # geom_vline(data=Get_data_thresholds(d),aes(xintercept = threshold))+
+  geom_segment(data=Get_data_thresholds(d),
+               aes(x = threshold, y = 20, xend = threshold, yend = 0),
+               arrow = arrow(length = unit(0.2, "cm")),lwd=1)+
+  the_theme2+
+  facet_wrap(.~factor(Name_panel,c("Carbon rich flows","Nitrogen rich flows",
+                                   "Nutrient rich flows","Phosphorus rich flows")),scales = "free",nrow = 2,ncol = 2)+
+  labs(x="Allochtonous detritus inputs (ID)",y="Origin of the carbon in the seston (%)",color="",fill="")+
+  guides(shape="none")+
+  scale_fill_manual(values=c("#80BFB5","#FFA963","#5F9203","brown"),
+                    labels=c("Fixers","Decomposers","Non-fixers","Detritus"))
+
+ggsave("../Figures/Final_figs/Along_ID_gradient_stacked.pdf",p1,width = 8,height = 7)
 
 
 
-# Step 3: Self-regulation ----
-
-d=read.table("../Table/Simulation_allochtonous_self_regulation.csv",sep=";")
-
-list_plots=list()
-id=1
-
-for (x2 in colnames(d)[c(1,4,7,13,14)]){
-  
-  for (IN_ in unique(d$IN)){
-    for (ID_ in unique(d$ID)){
-      
-      d2=Plot_with_limitation(d%>%filter(., ID==ID_,IN==IN_,converged_==T),
-                              "self",x2)
-      
-      list_plots[[id]]=d2$p+
-        geom_line(data=d2$data,
-                  aes(x=value_driver,y=value_y))+
-        the_theme+
-        labs(x="Self-regulation",y=x2)+theme(legend.position = "none")
-      
-      id=id+1
-    }
-    
-  }
+## Homeostasis ----
+Compute_slope=function(CP,beta){
+  return(unlist(as.numeric(coef(lm(1/CP~beta))[2])))
 }
 
-p_tot=ggarrange(plotlist=list_plots,ncol = 4,nrow = 5,common.legend = T,legend="none")
-ggsave("../Figures/Allochtonous_flows_self_1.pdf",p_tot,width = 12.5,height = 10)
-
-
-d=read.table("../Table/Simulation_allochtonous_self_regulation.csv",sep=";")
-
-list_plots=list()
-id=1
-
-for (x2 in colnames(d)[21:26]){
+d=rbind(read.table("../Table/Simulation_allochtonous_alpha_beta_A.csv",sep=";")%>%
+          dplyr::mutate(., 
+                        beta_diff=.015-.$PC_detritus,
+                        alpha_diff=.15-.$NC_detritus)%>%
+          Add_name_panel(.)%>%
+          dplyr::filter(., ID %in% unique(.$ID)[seq(1,40,by=2)],
+                        Simulation_ID==1)%>%
+          dplyr::group_by(., ID,Limitation_Decompo)%>%
+          dplyr::do(., slope=Compute_slope(.$CP_seston,.$beta_A))%>%
+          add_column(., Ratio="P:C ratio"),
+        read.table("../Table/Simulation_allochtonous_alpha_beta_A.csv",sep=";")%>%
+          dplyr::mutate(., 
+                        beta_diff=.015-.$PC_detritus,
+                        alpha_diff=.15-.$NC_detritus)%>%
+          Add_name_panel(.)%>%
+          dplyr::filter(.,ID %in% unique(.$ID)[seq(1,40,by=2)],
+                        Simulation_ID==2)%>%
+          dplyr::group_by(., ID,Limitation_Decompo)%>%
+          dplyr::do(., slope=Compute_slope(.$CN_seston,.$alpha_A))%>%
+          add_column(., Ratio="N:C ratio")
   
-  for (IN_ in unique(d$IN)){
-    for (ID_ in unique(d$ID)){
-      
-      d2=Plot_with_limitation(d%>%filter(., ID==ID_,IN==IN_,converged_==T),
-                              "self",x2)
-      
-      list_plots[[id]]=d2$p+
-        geom_line(data=d2$data,
-                  aes(x=value_driver,y=value_y))+
-        the_theme+
-        labs(x="Self-regulation",y=x2)+theme(legend.position = "none")
-      
-      id=id+1
-    }
-    
-  }
-}
-p_tot=ggarrange(plotlist=list_plots,ncol = 4,nrow = 6,common.legend = T,legend="none")
-ggsave("../Figures/Allochtonous_flows_self_2.pdf",p_tot,width = 12.5,height = 12)
-
-
-# Step 4: Self-regulation, each ----
-  
-for (orga_ in c("B","F","O")){  
-  
-  d=read.table("../Table/Simulation_allochtonous_self_regulation_each.csv",sep=";")%>%
-    filter(., organism==orga_)
-
-  list_plots=list()
-  id=1
-  
-  for (x2 in colnames(d)[c(1,4,7,13,14)]){
-    
-    for (IN_ in unique(d$IN)){
-      for (ID_ in unique(d$ID)){
-        
-        d2=Plot_with_limitation(d%>%filter(., ID==ID_,IN==IN_,converged_==T),
-                                "self",x2)
-        
-        list_plots[[id]]=d2$p+
-          geom_line(data=d2$data,
-                    aes(x=value_driver,y=value_y))+
-          the_theme+
-          labs(x="Self-regulation",y=x2)+theme(legend.position = "none")
-        
-        id=id+1
-      }
-    }
-  }
-  
-  p_tot=ggarrange(plotlist=list_plots,ncol = 4,nrow = 5,common.legend = T,legend="none")
-  ggsave(paste0("../Figures/Allochtonous_flows_self_",orga_,"_1.pdf"),
-         p_tot,width = 12.5,height = 10)
-  
-
-  list_plots=list()
-  id=1
-  
-  for (x2 in colnames(d)[21:26]){
-    
-    for (IN_ in unique(d$IN)){
-      for (ID_ in unique(d$ID)){
-        
-        d2=Plot_with_limitation(d%>%filter(., ID==ID_,IN==IN_,converged_==T),
-                                "self",x2)
-        
-        list_plots[[id]]=d2$p+
-          geom_line(data=d2$data,
-                    aes(x=value_driver,y=value_y))+
-          the_theme+
-          labs(x="Self-regulation",y=x2)+theme(legend.position = "none")
-        
-        id=id+1
-      }
-    }
-  }
-  p_tot=ggarrange(plotlist=list_plots,ncol = 4,nrow = 6,common.legend = T,legend="none")
-  ggsave(paste0("../Figures/Allochtonous_flows_self_",orga_,"_2.pdf"),
-         p_tot,width = 12.5,height = 12)
-}
-
-# Step 5: Stoichiometric ratio decomposers & self-regulation decomposers----
-
-d=read.table("../Table/Simulation_traits_decomposers.csv",sep=";")
-d$Deviation_Redfield=sapply(1:nrow(d),function(x){
-  return(sqrt(sum((c(d$CN_seston[x],d$CP_seston[x],d$NP_seston[x])-
-                     c(106/16,106,16))**2)))
-})
-
-list_plots=list()
-id=1
-
-for (x2 in colnames(d)[21:26]){
-  for (IN_ in unique(d$IN)){
-    for (ID_ in unique(d$ID)){
-      
-      list_plots[[id]]=ggplot(d%>%filter(., ID==ID_,IN==IN_,sB>min(.$sB)))+
-        geom_tile(aes(x=alphaB,y=sB,fill=Deviation_Redfield))+
-        scale_fill_viridis_c(option = "A")+
-        the_theme+
-        labs(x="alpha_B",y="sB",fill=x2)
-      
-      id=id+1
-    }
-    
-  }
-}
-
-p_tot=ggarrange(plotlist=list_plots,ncol = 4,nrow = 6,common.legend = T,legend="none")
-ggsave("../Figures/Allochtonous_flows_decomposers_traits.pdf",p_tot,width = 12.5,height = 10)
-
-
-
-# Step 6: Random parameters simulations ----
-
-d=read.table("../Table/Simulation_random_parameters.csv",sep=";")
-d$Limitation = paste0("Decomp: ",d$Limitation_Decompo,", Non-fix. ",d$Limitation_NF)
-d$Deviation_Redfield=sapply(1:nrow(d),function(x){
-  return(sqrt(sum((c(d$CN_seston[x],d$CP_seston[x],d$NP_seston[x])-
-                     c(106/16,106,16))**2)))
-})
-
-p=ggplot(d%>%
-           melt(., measure.vars = c("Deviation_Redfield","CN_seston",
-                                    "CP_seston","NP_seston","Decomposers_C",
-                                    "Fixers_C","Non_fixers_C","NC_detritus","Frac_decomp")))+
-  geom_boxplot_pattern(aes(y=value,x=Limitation,fill=Limitation_Decompo,pattern=Limitation_NF),
-                       pattern_density = 0.01)+
-  facet_wrap(variable~.,scales = "free",nrow = 3)+
-  scale_pattern_manual(values=c("N"="none","P"="stripe"))+
-  labs(x="",y="",fill="Limitation Decomp.",pattern="Limitation Non-Fix.")+
-  scale_fill_manual(values=c("#D2B96F","#8EBAEF","#D7B2F9"))+
-  the_theme+
-  theme(axis.text.x = element_blank())
-
-ggsave("../Figures/Random/Boxplot_limitation.pdf",p,width = 10,height = 7)
-
-p=ggarrange(
-  ggarrange(
-    ggplot(d)+
-      geom_point(aes(x=CP_seston,y=CN_seston,color=alpha_B))+
-      labs(x="CP seston",y="CN seston",fill=TeX("$\\alpha_B$"),pattern="")+
-      scale_color_viridis_c(option = "F")+
-      #scale_fill_manual(values=c("#D2B96F","#8EBAEF","#D7B2F9"))+
-      the_theme,
-    ggplot(d)+
-      geom_point(aes(x=CP_seston,y=NP_seston,color=alpha_B))+
-      labs(x="CN seston",y="NP seston",fill=TeX("$\\alpha_B$"),pattern="")+
-      scale_color_viridis_c(option = "F")+
-      #scale_fill_manual(values=c("#D2B96F","#8EBAEF","#D7B2F9"))+
-      the_theme,
-    ggplot(d)+
-      geom_point(aes(x=CN_seston,y=NP_seston,color=alpha_B))+
-      labs(x="CN seston",y="NP seston",fill=TeX("$\\alpha_B$"),pattern="")+
-      scale_color_viridis_c(option = "F")+
-      #scale_fill_manual(values=c("#D2B96F","#8EBAEF","#D7B2F9"))+
-      the_theme,
-    ncol=3
-  ),
-  ggarrange(
-    ggplot(d)+
-      geom_point(aes(x=CP_seston,y=CN_seston,color=beta_B))+
-      labs(x="CP seston",y="CN seston",fill=TeX("$\\beta_B$"),pattern="")+
-      scale_color_viridis_c()+
-      #scale_fill_manual(values=c("#D2B96F","#8EBAEF","#D7B2F9"))+
-      the_theme,
-    ggplot(d)+
-      geom_point(aes(x=CP_seston,y=NP_seston,color=beta_B))+
-      labs(x="CN seston",y="NP seston",fill=TeX("$\\beta_B$"),pattern="")+
-      scale_color_viridis_c()+
-      #scale_fill_manual(values=c("#D2B96F","#8EBAEF","#D7B2F9"))+
-      the_theme,
-    ggplot(d)+
-      geom_point(aes(x=CN_seston,y=NP_seston,color=beta_B))+
-      labs(x="CN seston",y="NP seston",fill=TeX("$\\beta_B$"),pattern="")+
-      scale_color_viridis_c()+
-      #scale_fill_manual(values=c("#D2B96F","#8EBAEF","#D7B2F9"))+
-      the_theme,
-    ncol=3
-  ),ggarrange(
-    ggplot(d)+
-      geom_point(aes(x=CP_seston,y=CN_seston,color=sB))+
-      labs(x="CP seston",y="CN seston",color=TeX("$\\s_B$"),pattern="")+
-      scale_color_viridis_c(option = "A")+
-      #scale_fill_manual(values=c("#D2B96F","#8EBAEF","#D7B2F9"))+
-      the_theme,
-    ggplot(d)+
-      geom_point(aes(x=CP_seston,y=NP_seston,color=sB))+
-      labs(x="CN seston",y="NP seston",color=TeX("$\\s_B$"),pattern="")+
-      scale_color_viridis_c(option = "A")+
-      #scale_fill_manual(values=c("#D2B96F","#8EBAEF","#D7B2F9"))+
-      the_theme,
-    ggplot(d)+
-      geom_point(aes(x=CN_seston,y=NP_seston,color=sB))+
-      labs(x="CN seston",y="NP seston",color=TeX("$\\s_B$"),pattern="")+
-      scale_color_viridis_c(option = "A")+
-      #scale_fill_manual(values=c("#D2B96F","#8EBAEF","#D7B2F9"))+
-      the_theme,
-    ncol=3
-  ),nrow=3,labels = LETTERS[1:3]
-)
-  
-
-ggsave("../Figures/Random/Large_influence_stoichio_decompo_ratio.pdf",p,width = 10,height = 10)
-
-p=ggarrange(
-  ggarrange(
-    ggplot(d)+
-      geom_point(aes(x=C_seston,y=N_seston,color=IP))+
-      geom_line(data=tibble(x=c(0,max(d$C_seston)),y=c(0,16*max(d$C_seston)/106)),aes(x=x,y=y),lwd=1)+
-      labs(x="C seston",y="N seston",fill="Inflow P",pattern="")+
-      scale_color_viridis_c(option = "F")+
-      #scale_fill_manual(values=c("#D2B96F","#8EBAEF","#D7B2F9"))+
-      the_theme,
-    ggplot(d)+
-      geom_point(aes(x=C_seston,y=P_seston,color=IP))+
-      geom_line(data=tibble(x=c(0,max(d$C_seston)),y=c(0,max(d$C_seston)/106)),aes(x=x,y=y),lwd=1)+
-      labs(x="C seston",y="P seston",fill="Inflow P",pattern="")+
-      scale_color_viridis_c(option = "F")+
-      #scale_fill_manual(values=c("#D2B96F","#8EBAEF","#D7B2F9"))+
-      the_theme,
-    ggplot(d)+
-      geom_point(aes(x=N_seston,y=P_seston,color=IP))+
-      geom_line(data=tibble(x=c(0,max(d$N_seston)),y=c(0,max(d$N_seston)/16)),aes(x=x,y=y),lwd=1)+
-      labs(x="N seston",y="P seston",fill="Inflow P",pattern="")+
-      scale_color_viridis_c(option = "F")+
-      #scale_fill_manual(values=c("#D2B96F","#8EBAEF","#D7B2F9"))+
-      the_theme,
-    ncol=3
-  ),
-  ggarrange(
-    ggplot(d)+
-      geom_point(aes(x=C_seston,y=N_seston,color=Frac_decomp))+
-      geom_line(data=tibble(x=c(0,max(d$C_seston)),y=c(0,16*max(d$C_seston)/106)),aes(x=x,y=y),lwd=1)+
-      labs(x="C seston",y="N seston",color="Level of heterotrophy \n (fraction decompo)",pattern="")+
-      scale_color_viridis_c(option = "F")+
-      #scale_fill_manual(values=c("#D2B96F","#8EBAEF","#D7B2F9"))+
-      the_theme,
-    ggplot(d)+
-      geom_point(aes(x=C_seston,y=P_seston,color=Frac_decomp))+
-      geom_line(data=tibble(x=c(0,max(d$C_seston)),y=c(0,max(d$C_seston)/106)),aes(x=x,y=y),lwd=1)+
-      labs(x="C seston",y="P seston",color="Level of heterotrophy \n (fraction decompo)",pattern="")+
-      scale_color_viridis_c(option = "F")+
-      #scale_fill_manual(values=c("#D2B96F","#8EBAEF","#D7B2F9"))+
-      the_theme,
-    ggplot(d)+
-      geom_point(aes(x=N_seston,y=P_seston,color=Frac_decomp))+
-      geom_line(data=tibble(x=c(0,max(d$N_seston)),y=c(0,max(d$N_seston)/16)),aes(x=x,y=y),lwd=1)+
-      labs(x="N seston",y="P seston",color="Level of heterotrophy \n (fraction decompo)",pattern="")+
-      scale_color_viridis_c(option = "F")+
-      #scale_fill_manual(values=c("#D2B96F","#8EBAEF","#D7B2F9"))+
-      the_theme,
-    ncol=3
-  ),ggarrange(
-    ggplot(d)+
-      geom_point(aes(x=C_seston,y=N_seston,color=sF))+
-      geom_line(data=tibble(x=c(0,max(d$C_seston)),y=c(0,16*max(d$C_seston)/106)),aes(x=x,y=y),lwd=1)+
-      labs(x="C seston",y="N seston",color="sF",pattern="")+
-      scale_color_viridis_c(option = "F")+
-      #scale_fill_manual(values=c("#D2B96F","#8EBAEF","#D7B2F9"))+
-      the_theme,
-    ggplot(d)+
-      geom_point(aes(x=C_seston,y=P_seston,color=sF))+
-      geom_line(data=tibble(x=c(0,max(d$C_seston)),y=c(0,max(d$C_seston)/106)),aes(x=x,y=y),lwd=1)+
-      labs(x="C seston",y="P seston",color="sF",pattern="")+
-      scale_color_viridis_c(option = "F")+
-      #scale_fill_manual(values=c("#D2B96F","#8EBAEF","#D7B2F9"))+
-      the_theme,
-    ggplot(d)+
-      geom_point(aes(x=N_seston,y=P_seston,color=sF))+
-      geom_line(data=tibble(x=c(0,max(d$N_seston)),y=c(0,max(d$N_seston)/16)),aes(x=x,y=y),lwd=1)+
-      labs(x="N seston",y="P seston",color="sF",pattern="")+
-      scale_color_viridis_c(option = "F")+
-      #scale_fill_manual(values=c("#D2B96F","#8EBAEF","#D7B2F9"))+
-      the_theme,
-    ncol=3
-  ),nrow=3,labels = LETTERS[1:3]
 )
 
-ggsave("../Figures/Random/Large_influence_stoichio_decompo_elements.pdf",p,width = 10,height = 10)
+
+d$slope=unlist(d$slope)
+d$ID=as.numeric(d$ID)
+p=ggplot(d)+
+  geom_point(aes(x=ID,y=1/slope,shape=Limitation_Decompo,fill=as.numeric(ID)),size=2,color="black")+
+  scale_fill_stepsn(colours = viridis(5,option = "G"))+
+  scale_shape_manual(values=c(21,22,23))+
+  the_theme2+
+  facet_wrap(.~Ratio,scales="free",nrow=2)+
+  labs(x="Allochtonous detritus \n inputs (ID)",y="Homeostasis (1/slope)",shape="Decomposer' limitation   ",
+       fill="Allochtonous   \n detritus inputs   \n   (ID)  ")+
+  geom_hline(yintercept = 1)+
+  theme(legend.text = element_text(size=12),
+        legend.title = element_text(size=13),
+        axis.text = element_text(size=12),
+        axis.title.x = element_text(size=13),
+        axis.title.y = element_text(size=13),
+        strip.text.x = element_text(size=13))
+
+p_legend=get_legend(p+theme(legend.box = "vertical"))
 
 
-# PCA
-metric_PCA=colnames(d)[c(21:26,38)]#[c(1,2,3,4,7,21:26,38)]
-res.pca=PCA(d[,which(colnames(d) %in% metric_PCA)], scale.unit = T, ncp = 3,  graph=F)
-axes_for_plot=tibble(x=c(1,1,2),y=c(2,3,3))
+d=read.table("../Table/Simulation_allochtonous_alpha_beta_A.csv",sep=";")%>%
+  dplyr::mutate(., 
+                beta_diff=.015-.$PC_detritus,
+                alpha_diff=.15-.$NC_detritus)%>%
+  Add_name_panel(.)
 
-for (metric_color in c("ID","IN","IP","sB","sO","sF","alpha_B","beta_B")){
+p11=ggplot(d%>%
+             mutate(., 
+                    alpha_A=recode_factor(alpha_A,"0.02"="low","0.14"="high"))%>%
+             dplyr::filter(.,
+                           ID %in% unique(.$ID)[seq(1,40,by=8)],
+                           alpha_A=="low",
+                           Simulation_ID==1))+
+  geom_line(aes(x=beta_A,y=1/CP_seston,color=ID,group=interaction(ID)),lwd=1)+
+  geom_point(data=d%>%
+               mutate(., 
+                      alpha_A=recode_factor(alpha_A,"0.02"="low","0.14"="high"))%>%
+               dplyr::filter(.,
+                             Simulation_ID==1,
+                             alpha_A=="low",
+                             ID %in% unique(.$ID)[seq(1,40,by=8)],
+                             beta_A %in% unique(.$beta_A)[seq(1,40,by=5)]),
+             aes(x=beta_A,y=1/CP_seston,fill=ID,shape=Limitation_Decompo),size=3,color="black")+
+  scale_fill_stepsn(colours = viridis(5,option = "G"))+
+  scale_color_stepsn(colours = viridis(5,option = "G"))+
+  geom_hline(yintercept = 1/106,color="pink",linetype=2,lwd=1)+
+  scale_shape_manual(values = c(21,22,23))+
+  labs(x=expression(paste("P:C of allochtonous flows (",beta[A],")")),
+       y=expression(paste("Seston P:C ratio (",beta[seston],")")),
+       color="Detritus inflow (ID)",shape="Decomposer' limitation")+
+  the_theme2+
+  theme(legend.text = element_text(size=12),
+        legend.title = element_text(size=13),
+        axis.text = element_text(size=12),
+        axis.title.x = element_text(size=13),
+        axis.title.y = element_text(size=13),
+        strip.text.x = element_text(size=13))
+
+
+p21=ggplot(d%>%
+             mutate(., 
+                    beta_A=recode_factor(beta_A,"0.002"="low","0.012"="high"))%>%
+             dplyr::filter(.,
+                           ID %in% unique(.$ID)[seq(1,40,by=8)],
+                           beta_A=="low",
+                           Simulation_ID==2))+
+  geom_line(aes(x=alpha_A,y=1/CN_seston,color=ID,group=interaction(ID,IN,IP)),lwd=1)+
+  geom_point(data=d%>%
+               mutate(., 
+                      beta_A=recode_factor(beta_A,"0.002"="low","0.012"="high"))%>%
+               dplyr::filter(.,
+                             Simulation_ID==2,
+                             beta_A=="low",
+                             ID %in% unique(.$ID)[seq(1,40,by=8)],
+                             alpha_A %in% unique(.$alpha_A)[seq(1,40,by=5)]),
+             aes(x=alpha_A,y=1/CN_seston,fill=ID,shape=Limitation_Decompo),size=3,color="black")+
+  geom_hline(yintercept = 16/106,color="pink",linetype=2,lwd=1)+
+  scale_fill_stepsn(colours = viridis(5,option = "G"))+
+  scale_color_stepsn(colours = viridis(5,option = "G"))+
+  scale_shape_manual(values = c(21,22,23))+
+  labs(x=expression(paste("N:C of allochtonous flows (",alpha[A],")")),
+       y=expression(paste("Seston N:C ratio (",alpha[seston],")")),
+       color="Detritus inflow (ID)",shape="Decomposer' limitation")+
+  the_theme2+
+  theme(legend.text = element_text(size=12),
+        legend.title = element_text(size=13),
+        axis.text = element_text(size=12),
+        axis.title.x = element_text(size=13),
+        axis.title.y = element_text(size=13),
+        strip.text.x = element_text(size=13))
+
+
+
+ggsave("../Figures/Final_figs/Variation_NC_seston_input_all_species.pdf",
+       ggarrange(
+         ggarrange(
+           ggarrange(
+             ggplot()+theme_void(),p+theme(legend.position = "none"),widths = c(1,.45),labels = c("a","b")),
+                   ggarrange(p11,p21,ncol=2,labels = c("c","d"),common.legend = T,legend="none",heights = c(1,1.05)),
+                   nrow=2,heights = c(1.3,1),labels = c("","")),p_legend,heights = c(1,.15),nrow=2),
+       width = 8,height = 9)
+
+
+
+
+## Other indirect effects ----
+
+
+d=read.table("../Table/Simulation_allochtonous_I_to_A.csv",sep=";")%>%
+  mutate(., 
+         alpha_A=ifelse(alpha_A==.02,"low","high"),
+         beta_A=ifelse(beta_A==.002,"low","high"),
+         Simulation_ID=as.factor(Simulation_ID)
+  )%>%
+  dplyr::filter(., Simulation_ID==3)%>%
+  Add_name_panel(.)%>%
+  dplyr::group_by(., Name_panel)%>%
+  dplyr::mutate(., 
+                Decomposers_C_scaled=scaling_vector_x_0_1(Decomposers_C),
+                Non_fixers_C_scaled=scaling_vector_x_0_1(Non_fixers_C),
+                PC_detritus_scaled=scaling_vector_x_0_1(PC_detritus),
+                NC_detritus_scaled=scaling_vector_x_0_1(NC_detritus),
+                Fixers_C_scaled=scaling_vector_x_0_1(Fixers_C),
+                Frac_decomp_scaled=scaling_vector_x_0_1(Fixers_C),
+                NP_threshold_NF_scaled=scaling_vector_x_0_1(NP_threshold_NF),
+                PC_diff_scaled=scaling_vector_x_0_1(beta_B-PC_detritus),
+                NC_diff_scaled=scaling_vector_x_0_1(alpha_B-NC_detritus),
+  )
+
+
+color_graph=c("C"="#D2B96F","N"="#8EBAEF")
+
+p1=ggplot(NULL)+
+  geom_rect(data=Get_data_thresholds(d,c("B","A","A","C")),
+            aes(xmin = threshold,xmax=65,ymin=-Inf,ymax = Inf,fill=color_label),lwd=1,alpha=.3)+
+  geom_rect(data=Get_data_thresholds(d,c("B","A","A","C")),
+            aes(xmin = 0,xmax=threshold,ymin=-Inf,ymax = Inf),lwd=1,alpha=.3,fill="#FFF4D5")+
+  geom_line(data=d%>%melt(.,measure.vars=c(colnames(d)[grep("indirect",colnames(d))])[c(1:2,5:6)],
+                          value.name = "Species_C",variable.name = "Species_name"),
+            aes(x=ID,y=Species_C,color=Species_name,group=interaction(Species_name,beta_A)),lwd=1)+
+  geom_point(data=d%>%melt(.,measure.vars=c(colnames(d)[grep("indirect",colnames(d))])[c(1:2,5:6)],
+                           value.name = "Species_C",variable.name = "Species_name")%>%dplyr::filter(., ID %in% unique(.$ID)[seq(1,100,by=10)]),
+             aes(x=ID,y=Species_C,color=Species_name),size=3,shape=21)+
+  scale_shape_manual(values = c(23,23))+
+  facet_wrap(.~Name_panel,scales = "free")+#,
+  the_theme2+
+  geom_hline(yintercept = 0)+
+  labs(x="Allochtonous detritus inputs (ID)",y="Indirect effects between \n functional groups",color="")+
+  guides(fill="none",shape="none")+
+  scale_fill_manual(values=c("A"="#A7C3D6","B"="#AA8DB5","C"="transparent"))+
+  scale_color_manual(values=c("#FFBA80","#80BFB5",
+                              "#A95F00","#216156"),
+                     label=c("Decomposers on fixers",
+                             "Fixers on decomposers",
+                             "Decomposers on non-fixers",
+                             "Non-fixers on decomposers"))+
+  guides(color=guide_legend(ncol=2))+
+  geom_label(data=tibble(Name_panel=c("Carbon rich flows",
+                                      "Phosphorus rich flows",
+                                      "Nitrogen rich flows"),
+                         x=c(45,45,53),y=c(.2,.2,.2),label=c("N-limited","N-limited","P-limited")),
+             aes(x=x,y=y,label=label))+
+  geom_label(data=tibble(Name_panel=c("Carbon rich flows",
+                                      "Phosphorus rich flows",
+                                      "Nitrogen rich flows",
+                                      "Nutrient rich flows"),
+                         x=c(10,10,20,32),y=c(.2,.2,.2,.2),label=rep("C-limited",4)),
+             aes(x=x,y=y,label=label))+ylim(-.28,.22)+xlim(0,65)
+
+ggsave("../Figures/Final_figs/SI/Along_ID_gradient_indirect_other.pdf",p1,width = 8,height = 7)
+
+
+# ------------------ 2 species: decomposers-fixers ----
+
+d=read.table("../Table/2_species/Simulation_fixers_and_decomposers_2D_quality_quantity.csv",sep=";")%>%
+  dplyr::filter(., Simulation_ID=="Beta_vary",beta_A%in%c(.002,.012))%>%
+  mutate(., 
+         alpha_A=ifelse(alpha_A==.02,"low","high"),
+         beta_A=ifelse(beta_A==.002,"low","high"),
+         Simulation_ID=as.factor(Simulation_ID)
+  )%>%
+  Add_name_panel(.)%>%
+  dplyr::group_by(., Name_panel)%>%
+  dplyr::mutate(., 
+                Decomposers_C_scaled=scale(Decomposers_C)[,1],
+                Non_fixers_C_scaled=scale(Non_fixers_C)[,1],
+                PC_detritus_scaled=scale(PC_detritus)[,1],
+                NC_detritus_scaled=scale(NC_detritus)[,1],
+                Fixers_C_scaled=scale(Fixers_C)[,1],
+                Frac_decomp_scaled=scale(Fixers_C)[,1],
+                NP_threshold_NF_scaled=scale(NP_threshold_NF)[,1]
+  )
+
+
+p1=ggplot(NULL)+
+  geom_rect(data=Get_data_thresholds(d,c("B","A","A","C")),
+            aes(xmin = threshold,xmax=50,ymin=-Inf,ymax = Inf,fill=color_label),lwd=1,alpha=.3)+
+  geom_line(data=d%>%melt(.,measure.vars=c("Decomposers_C_scaled","Fixers_C_scaled"),
+                          value.name = "Species_C",variable.name = "Species_name"),
+            aes(x=ID,y=Species_C,color=Species_name,group=interaction(Species_name,beta_A)),lwd=1)+
+  geom_point(data=d%>%melt(.,measure.vars=c("Decomposers_C_scaled","Fixers_C_scaled"),
+                           value.name = "Species_C",variable.name = "Species_name")%>%dplyr::filter(., ID %in% unique(.$ID)[seq(1,100,by=10)]),
+             aes(x=ID,y=Species_C,color=Species_name),size=3,shape=21)+
+  scale_shape_manual(values = c(23,21,22))+
+  facet_wrap(.~Name_panel,scales = "free")+#,
+  #labeller = label_bquote(cols=N:C~allochtonous~low~(alpha[A])~P:C~allochtonous~.(as.character(beta_A))~(beta[A])))+
+  the_theme2+
+  labs(x="Allochtonous detritus inputs (ID)",y="Density of organisms (scaled)",color="")+
+  guides(fill="none")+
+  scale_fill_manual(values=c("A"="#9BBDFF","B"="violet","C"="transparent"))+
+  scale_color_manual(values=c("#FFA963","#5F9203"),labels=c("Decomposers","Fixers"))
+
+
+
+ggsave("../Figures/2_species/Decomposers_fixers_PC_detritus.pdf",p1,width =  8,height = 7)
+
+
+d2=dplyr::filter(d)%>%
+  melt(., measure.vars=c("Fixers_C","Decomposers_C","Detritus_C"))%>%
+  dplyr::group_by(.,ID,Name_panel)%>%
+  mutate(., value=100*value/sum(value))
+
+p1=ggplot(d2)+
+  geom_area(aes(x=ID,y=value,fill=variable),alpha=.5)+
+  # geom_vline(data=Get_data_thresholds(d),aes(xintercept = threshold))+
+  geom_segment(data=Get_data_thresholds(d),
+               aes(x = threshold, y = 20, xend = threshold, yend = 0),
+               arrow = arrow(length = unit(0.2, "cm")),lwd=1)+
+  the_theme2+
+  facet_wrap(.~Name_panel,scales = "free",nrow = 2,ncol = 2)+
+  labs(x="Allochtonous detritus inputs (ID)",y="Origin of the carbon in the seston (%)",color="",fill="")+
+  guides(shape="none")+
+  scale_fill_manual(values=c("#80BFB5","#FFA963","brown"),
+                    labels=c("Fixers","Decomposers","Detritus"))
+
+ggsave("../Figures/2_species/Along_ID_gradient_stacked_fixers_and_decomposers.pdf",p1,width = 8,height = 7)
+
+
+
+
+
+
+p1=ggplot(NULL)+
+  geom_rect(data=Get_data_thresholds(d,c("B","A","A","C")),
+            aes(xmin = threshold,xmax=50,ymin=-Inf,ymax = Inf,fill=color_label),lwd=1,alpha=.3)+
+  geom_line(data=d%>%melt(.,measure.vars=c(colnames(d)[grep("indirect",colnames(d))])[c(1:2)],
+                          value.name = "Species_C",variable.name = "Species_name"),
+            aes(x=ID,y=Species_C,color=Species_name,group=interaction(Species_name,beta_A)),lwd=1)+
+  geom_point(data=d%>%melt(.,measure.vars=c(colnames(d)[grep("indirect",colnames(d))])[c(1:2)],
+                           value.name = "Species_C",variable.name = "Species_name")%>%dplyr::filter(., ID %in% unique(.$ID)[seq(1,100,by=10)]),
+             aes(x=ID,y=Species_C,color=Species_name),size=3,shape=21)+
+  scale_shape_manual(values = c(23,23))+
+  facet_wrap(.~Name_panel,scales = "free")+#,
+  #labeller = label_bquote(cols=N:C~allochtonous~low~(alpha[A])~P:C~allochtonous~.(as.character(beta_A))~(beta[A])))+
+  the_theme2+
+  geom_hline(yintercept = 0)+
+  labs(x="Allochtonous detritus inputs (ID)",y="Indirect effects between \n functional groups",color="")+
+  guides(fill="none",shape="none")+
+  scale_fill_manual(values=c("A"="#9BBDFF","B"="violet","C"="transparent"))+
+  scale_color_manual(values=c("#FFBA80","#80BFB5"),#"#5F9203",
+                              #"#000467",
+                              #"#A95F00","#216156"),
+                     label=c("Decomposers on fixers",
+                             "Fixers on decomposers"#,
+                             #"Non-fixers on fixers",
+                             # "Fixers on non-fixers",
+                             #"Decomposers on non-fixers",
+                             #"Non-fixers on decomposers"
+                             ))+
+  guides(color=guide_legend(ncol=2))
+
+
+ggsave("../Figures/2_species/Along_ID_gradient_indirect_fix_decompo.pdf",p1,width = 8,height = 7)
+
+
+d=read.table("../Table/2_species/Simulation_fixers_and_decomposers_2D_quality_quantity.csv",sep=";")%>%
+  dplyr::mutate(., 
+                beta_diff=.015-.$PC_detritus,
+                alpha_diff=.15-.$NC_detritus)
+
+p11=ggplot(d%>%
+             mutate(., 
+                    alpha_A=recode_factor(alpha_A,"0.02"="low","0.14"="high"))%>%
+             dplyr::filter(.,
+                           Simulation_ID=="Beta_vary",
+                           ID %in% unique(.$ID)[seq(1,40,by=8)]))+
+  geom_line(aes(x=beta_A,y=1/CP_seston,color=ID,group=ID),lwd=1)+
+  geom_point(data=d%>%
+               mutate(., 
+                      alpha_A=recode_factor(alpha_A,"0.02"="low","0.14"="high"))%>%
+               dplyr::filter(.,
+                             Simulation_ID=="Beta_vary",
+                             ID %in% unique(.$ID)[seq(1,40,by=8)],
+                             beta_A %in% unique(.$beta_A)[seq(1,40,by=5)]),
+             aes(x=beta_A,y=1/CP_seston,color=ID,shape=Limitation_Decompo),size=3,fill="white")+
+  scale_colour_stepsn(colours = viridis(5,option = "G"))+
+  facet_wrap(.~alpha_A,scales = "free",
+             labeller = label_bquote(cols=alpha[A]==.(as.character(alpha_A))))+
+  scale_shape_manual(values = c(21,23))+
+  labs(x=expression(paste("P:C of allochtonous flows (",beta[A],")")),
+       y=expression(paste("Seston P:C ratio (",beta[seston],")")))+
+  the_theme2
+
+p21=ggplot(d%>%
+             mutate(., 
+                    beta_A=recode_factor(beta_A,"0.002"="low","0.012"="high"))%>%
+             dplyr::filter(.,
+                           Simulation_ID=="Alpha_vary",
+                           ID %in% unique(.$ID)[seq(1,40,by=8)]))+
+  geom_line(aes(x=alpha_A,y=1/CN_seston,color=ID,group=ID),lwd=1)+
+  geom_point(data=d%>%
+               mutate(., 
+                      beta_A=recode_factor(beta_A,"0.002"="low","0.012"="high"))%>%
+               dplyr::filter(.,
+                             Simulation_ID=="Alpha_vary",
+                             ID %in% unique(.$ID)[seq(1,40,by=8)],
+                             alpha_A %in% unique(.$alpha_A)[seq(1,40,by=5)]),
+             aes(x=alpha_A,y=1/CN_seston,color=ID,shape=Limitation_Decompo),size=3,fill="white")+
+  scale_colour_stepsn(colours = viridis(5,option = "G"))+
+  facet_wrap(.~beta_A,scales = "free",
+             labeller = label_bquote(cols=beta[A]==.(as.character(beta_A))))+
+  scale_shape_manual(values = c(21,23))+
+  labs(x=expression(paste("N:C of allochtonous flows (",alpha[A],")")),
+       y=expression(paste("Seston N:C ratio (",alpha[seston],")")))+
+  the_theme2
+
+ggsave("../Figures/2_species/Variation_NC_seston_input_fixer_and_decomposers.pdf",
+       ggarrange(p11,p21,nrow=2,labels = letters[1:2],common.legend = T,legend="bottom",heights = c(1,1.05)),
+       width = 7,height = 8)
+
+
+
+# ------------------ 2 species: decomposers-non.fixers ----
+
+d=read.table("../Table/2_species/Simulation_Non_fixers_and_decomposers_2D_quality_quantity.csv",sep=";")%>%
+  dplyr::filter(., Simulation_ID=="Beta_vary",beta_A%in%c(.002,.012))%>%
+  mutate(., 
+         alpha_A=ifelse(alpha_A==.02,"low","high"),
+         beta_A=ifelse(beta_A==.002,"low","high"),
+         Simulation_ID=as.factor(Simulation_ID)
+  )%>%
+  Add_name_panel(.)%>%
+  dplyr::group_by(., Name_panel)%>%
+  dplyr::mutate(., 
+                Decomposers_C_scaled=scale(Decomposers_C)[,1],
+                Non_fixers_C_scaled=scale(Non_fixers_C)[,1],
+                PC_detritus_scaled=scale(PC_detritus)[,1],
+                NC_detritus_scaled=scale(NC_detritus)[,1],
+                Fixers_C_scaled=scale(Fixers_C)[,1],
+                Frac_decomp_scaled=scale(Fixers_C)[,1],
+                NP_threshold_NF_scaled=scale(NP_threshold_NF)[,1]
+  )
+
+
+
+p1=ggplot(NULL)+
+  geom_rect(data=Get_data_thresholds(d,c("B","A","A","C")),
+            aes(xmin = threshold,xmax=50,ymin=-Inf,ymax = Inf,fill=color_label),lwd=1,alpha=.3)+
+  geom_line(data=d%>%melt(.,measure.vars=c("Decomposers_C_scaled","Non_fixers_C_scaled"),
+                          value.name = "Species_C",variable.name = "Species_name"),
+            aes(x=ID,y=Species_C,color=Species_name,group=interaction(Species_name,beta_A)),lwd=1)+
+  geom_point(data=d%>%melt(.,measure.vars=c("Decomposers_C_scaled","Non_fixers_C_scaled"),
+                           value.name = "Species_C",variable.name = "Species_name")%>%dplyr::filter(., ID %in% unique(.$ID)[seq(1,100,by=10)]),
+             aes(x=ID,y=Species_C,color=Species_name),size=3,shape=21)+
+  scale_shape_manual(values = c(23,21,22))+
+  facet_wrap(.~Name_panel,scales = "free")+#,
+  #labeller = label_bquote(cols=N:C~allochtonous~low~(alpha[A])~P:C~allochtonous~.(as.character(beta_A))~(beta[A])))+
+  the_theme2+
+  labs(x="Allochtonous detritus inputs (ID)",y="Density of organisms (scaled)",color="")+
+  guides(fill="none")+
+  scale_fill_manual(values=c("A"="#9BBDFF","B"="violet","C"="transparent"))+
+  scale_color_manual(values=c("#FFA963","#80BFB5"),labels=c("Decomposers","Non-fixers"))
+
+
+ggsave("../Figures/2_species/Decomposers_non_fixers_PC_NC_detritus.pdf",p1,width =  8,height = 7)
+
+p1=ggplot(NULL)+
+  geom_rect(data=Get_data_thresholds(d,c("B","A","A","C")),
+            aes(xmin = threshold,xmax=50,ymin=-Inf,ymax = Inf,fill=color_label),lwd=1,alpha=.3)+
+  geom_line(data=d%>%melt(.,measure.vars=c(colnames(d)[grep("indirect",colnames(d))])[c(5:6)],
+                          value.name = "Species_C",variable.name = "Species_name"),
+            aes(x=ID,y=Species_C,color=Species_name,group=interaction(Species_name,beta_A)),lwd=1)+
+  geom_point(data=d%>%melt(.,measure.vars=c(colnames(d)[grep("indirect",colnames(d))])[c(5:6)],
+                           value.name = "Species_C",variable.name = "Species_name")%>%dplyr::filter(., ID %in% unique(.$ID)[seq(1,100,by=10)]),
+             aes(x=ID,y=Species_C,color=Species_name),size=3,shape=21)+
+  scale_shape_manual(values = c(23,23))+
+  facet_wrap(.~Name_panel,scales = "free")+#,
+  #labeller = label_bquote(cols=N:C~allochtonous~low~(alpha[A])~P:C~allochtonous~.(as.character(beta_A))~(beta[A])))+
+  the_theme2+
+  geom_hline(yintercept = 0)+
+  labs(x="Allochtonous detritus inputs (ID)",y="Indirect effects between \n functional groups",color="")+
+  guides(fill="none",shape="none")+
+  scale_fill_manual(values=c("A"="#9BBDFF","B"="violet","C"="transparent"))+
+  scale_color_manual(values=c("#A95F00","#216156"),
+                     label=c("Decomposers on non-fixers",
+                             "Non-fixers on decomposers"
+                     ))+
+  guides(color=guide_legend(ncol=2))
+
+
+ggsave("../Figures/2_species/Along_ID_gradient_indirect_nonfix_decompo.pdf",p1,width = 8,height = 7)
+
+
+
+d2=dplyr::filter(d)%>%
+  melt(., measure.vars=c("Decomposers_C","Non_fixers_C","Detritus_C"))%>%
+  dplyr::group_by(.,ID,Name_panel)%>%
+  mutate(., value=100*value/sum(value))
+
+p1=ggplot(d2)+
+  geom_area(aes(x=ID,y=value,fill=variable),alpha=.5)+
+  # geom_vline(data=Get_data_thresholds(d),aes(xintercept = threshold))+
+  geom_segment(data=Get_data_thresholds(d),
+               aes(x = threshold, y = 20, xend = threshold, yend = 0),
+               arrow = arrow(length = unit(0.2, "cm")),lwd=1)+
+  the_theme2+
+  facet_wrap(.~Name_panel,scales = "free",nrow = 2,ncol = 2)+
+  labs(x="Allochtonous detritus inputs (ID)",y="Origin of the carbon in the seston (%)",color="",fill="")+
+  guides(shape="none")+
+  scale_fill_manual(values=c("#FFA963","#5F9203","brown"),
+                    labels=c("Decomposers","Non-fixers","Detritus"))
+
+ggsave("../Figures/2_species/Along_ID_gradient_stacked_non_fixers_and_decomposers.pdf",p1,width = 8,height = 7)
+
+
+
+d=read.table("../Table/2_species/Simulation_Non_fixers_and_decomposers_2D_quality_quantity.csv",sep=";")%>%
+  dplyr::mutate(., 
+                beta_diff=.015-.$PC_detritus,
+                alpha_diff=.15-.$NC_detritus)
+
+p11=ggplot(d%>%
+             mutate(., 
+                    alpha_A=recode_factor(alpha_A,"0.02"="low","0.14"="high"))%>%
+             dplyr::filter(.,
+                           Simulation_ID=="Beta_vary",
+                           ID %in% unique(.$ID)[seq(1,40,by=8)]))+
+  geom_line(aes(x=beta_A,y=1/CP_seston,color=ID,group=ID),lwd=1)+
+  geom_point(data=d%>%
+               mutate(., 
+                      alpha_A=recode_factor(alpha_A,"0.02"="low","0.14"="high"))%>%
+               dplyr::filter(.,
+                             Simulation_ID=="Beta_vary",
+                             ID %in% unique(.$ID)[seq(1,40,by=8)],
+                             beta_A %in% unique(.$beta_A)[seq(1,40,by=5)]),
+             aes(x=beta_A,y=1/CP_seston,color=ID,shape=Limitation_Decompo),size=3,fill="white")+
+  scale_colour_stepsn(colours = viridis(5,option = "G"))+
+  facet_wrap(.~alpha_A,scales = "free",
+             labeller = label_bquote(cols=alpha[A]==.(as.character(alpha_A))))+
+  scale_shape_manual(values = c(21,23))+
+  labs(x=expression(paste("P:C of allochtonous flows (",beta[A],")")),
+       y=expression(paste("Seston P:C ratio (",beta[seston],")")))+
+  the_theme2
+
+p21=ggplot(d%>%
+             mutate(., 
+                    beta_A=recode_factor(beta_A,"0.002"="low","0.012"="high"))%>%
+             dplyr::filter(.,
+                           Simulation_ID=="Alpha_vary",
+                           ID %in% unique(.$ID)[seq(1,40,by=8)]))+
+  geom_line(aes(x=alpha_A,y=1/CN_seston,color=ID,group=ID),lwd=1)+
+  geom_point(data=d%>%
+               mutate(., 
+                      beta_A=recode_factor(beta_A,"0.002"="low","0.012"="high"))%>%
+               dplyr::filter(.,
+                             Simulation_ID=="Alpha_vary",
+                             ID %in% unique(.$ID)[seq(1,40,by=8)],
+                             alpha_A %in% unique(.$alpha_A)[seq(1,40,by=5)]),
+             aes(x=alpha_A,y=1/CN_seston,color=ID,shape=Limitation_Decompo),size=3,fill="white")+
+  scale_colour_stepsn(colours = viridis(5,option = "G"))+
+  facet_wrap(.~beta_A,scales = "free",
+             labeller = label_bquote(cols=beta[A]==.(as.character(beta_A))))+
+  scale_shape_manual(values = c(21,23))+
+  labs(x=expression(paste("N:C of allochtonous flows (",alpha[A],")")),
+       y=expression(paste("Seston N:C ratio (",alpha[seston],")")))+
+  the_theme2
+
+
+ggsave("../Figures/2_species/Variation_NC_seston_input_nonfixer_and_decomposers.pdf",
+       ggarrange(p11,p21,nrow=2,labels = letters[1:2],common.legend = T,legend="bottom",heights = c(1,1.05)),
+       width = 7,height = 8)
+
+
+
+# ------------------ Transient increase in stoichiometry ----
+
+ode_lake_CNP_R_flexible = function(t,y,param){ 
   
-  for (i in 1:3){
-    assign(paste0("p",i),
-           d%>%
-             melt(., measure.vars = metric_color)%>%
-             add_column(., PC1=res.pca$ind$coord[,axes_for_plot$x[i]],PC2=res.pca$ind$coord[,axes_for_plot$y[i]])%>%
-             ggplot(.) +
-             geom_hline(yintercept = 0, lty = 2) +
-             geom_vline(xintercept = 0, lty = 2) +
-             geom_point(aes(x = PC1, y = PC2, color = value,fill=value),alpha=.5)+
-             scale_fill_viridis_c()+
-             scale_color_viridis_c()+
-             # geom_point(data=centroids,aes(x=centroids[,axes_for_plot$x[i]+1],y=centroids[,axes_for_plot$y[i]+1]),shape=24,fill="black",color="white")+
-             labs(x=paste0("PC ",axes_for_plot$x[i]," (",round(res.pca$eig[axes_for_plot$x[i],2], 1)," %)"),
-                  y=paste0("PC ",axes_for_plot$y[i]," (",round(res.pca$eig[axes_for_plot$y[i],2], 1)," %)"),color="",fill="")+
-             ggtitle("")+guides(shape="none")+
-             theme_classic()+theme(legend.position = "bottom")+
-             guides(color = guide_legend(override.aes = list(size = 3)),fill="none",size="none")  
-    )
+  y[y < 10^-3] = 0 # prevent numerical problems
+  
+  iP = param$pulse_P(t)
+  iN = param$pulse_N(t)
+  
+  with(as.list(c(y, param)),{
+    
+    
+    
+    if (DC_){ #donnor controlled
+      
+      gO_NP = (muO * min(P, N))             # growth rate non-fixer
+      gF_P  = (muF * P)                     # growth rate fixer
+      uptake_D = (eB * aD * DC)             # uptake detritus
+      uptake_N = (aN * N)                   # uptake nitrogen
+      uptake_P = (aP * P)                   # uptake phosphorous
+      
+    } else{
+      if (functional_response_phyto==1){
+        
+        gO_NP = muO * min(P, N) * OC     # growth rate non-fixer
+        gF_P  = muF * P * FC             # growth rate fixer
+        
+      }else{ #type 2
+        
+        gO_NP = muO * min(P/(kP+P),N/(kN+N)) * OC # growth rate non-fixer
+        gF_P  = (muF * P)/(kP+P) * FC             # growth rate fixer
+      }
+      uptake_D = eB * aD * DC * BC             # uptake detritus
+      uptake_N = aN * N * BC                   # uptake nitrogen
+      uptake_P = aP * P * BC                   # uptake phosphorous
+    }
+    
+    beta_D  = DP/DC                     # P:C ratio detritus allocht
+    alpha_D = DN/DC                     # N:C ratio detritus
+    
+    if (same_stoichio){
+      alpha_allo = alpha_D
+      beta_allo  = beta_D
+    }
+    
+    # we below write phi_i_j the decomposer function (immobilization/mineralization or decomposition) under the limitation j
+    # phi_P_C would for instance be the immobilization/mineralization of P under C-limitation of decomposers
+    
+    #immobilization/mineralization P
+    phi_P_C_lim = (uptake_D * (beta_B - beta_D)) / beta_B
+    phi_P_N_lim = ((beta_B - beta_D) * alpha_B / ( (alpha_B - alpha_D) * beta_B)) * uptake_N
+    phi_P_P_lim = uptake_P
+    
+    phi_P =  min(c(phi_P_C_lim,phi_P_N_lim,phi_P_P_lim))      # immobilization/mineralization of P
+    phi_N =  (( (alpha_B - alpha_D) * beta_B) / ((beta_B - beta_D) * alpha_B)) * phi_P      # immobilization/mineralization of N
+    phi_D =  beta_B  * phi_P / (beta_B  - beta_D)      # decomposition of detritus
+    
+    #Now the dynamics :
+    du=rep(NA,14)
+    
+    #DECOMPOSERS     
+    du[1] = phi_D                             -           dB * BC           - m * BC  -           sB * BC * BC  #BC
+    du[2] = phi_D * alpha_D + phi_N * alpha_B - alpha_B * dB * BC - alpha_B * m * BC  - alpha_B * sB * BC * BC  #BN
+    du[3] = phi_D * beta_D  + phi_P * beta_B  - beta_B  * dB * BC - beta_B  * m * BC  - beta_B  * sB * BC * BC  #BP
+    
+    #PLANKTON
+    du[4] =            gF_P  - dF * FC    -            sF * FC * FC     #FC
+    du[5] = alpha_F * (gF_P  - dF * FC)   - alpha_F  * sF * FC * FC     #FN
+    du[6] = beta_F  * (gF_P  - dF * FC)   - beta_F   * sF * FC * FC     #FP
+    du[7] =            gO_NP - dO * OC    -            sO * OC * OC     #OC
+    du[8] = alpha_O * (gO_NP - dO * OC)   - alpha_O  * sO * OC * OC     #ON
+    du[9] = beta_O  * (gO_NP - dO * OC)   - beta_O   * sO * OC * OC     #OP
+    
+    #DETRITUS 
+    du[10] = ID - lD * DC + dB * BC + dF * FC + dO * OC - phi_D                #DC  
+    
+    du[11] = ID * (alpha_allo*iN) - lD * DN + alpha_B * dB * BC +                   #DN
+      alpha_F * dF * FC + alpha_O * dO * OC - phi_D * alpha_D                                    
+    
+    du[12] = ID * (beta_allo*iP)  - lD * DP + beta_B  * dB * BC +                   #DP
+      beta_F  * dF * FC + beta_O  * dO * OC - phi_D * beta_D                                    
+    
+    #NITROGEN 
+    du[13] = IN - lN * N - alpha_O * gO_NP  - #- alpha_F * gF_P * FC       #N                           
+      alpha_B * phi_N + alpha_B * m * BC
+    
+    #PHOSPHOROUS 
+    du[14] = IP - lP * P - beta_O  * gO_NP   - beta_F  * gF_P  -        #P                      
+      beta_B * phi_P  + beta_B  * m * BC
+    
+    #sum(du)
+    #IP+ID+IN+ID * alpha_allo+ID * beta_allo-m * BC-lN * N-lP * P-lD * DC-lD * DN-lD * DP
+    
+    list(du)
+    
+  })
+}
+
+
+Get_transient_dynamics=function(nutrient="P",ID_=10,beta_A_=.002,alpha_A_=.02,
+                                value_increase=2,sin=T){
+  
+  # reaching equilibrium
+  p=Get_classical_param_lake()
+  ini=Get_initial_values(p)
+  
+  p$functional_response_phyto=1
+  p[c("sB","sF","sO")]=0.1
+  p$IN=5
+  p$ID=ID_
+  p$IP=5
+  p$beta_allo=beta_A_
+  p$alpha_allo=alpha_A_
+  
+  
+  p$pulse_P <- function(t_) {
+    i_M_t = ifelse(t_ > 10 & t_ <= (20), 0, 0)
+    return(i_M_t)
+  }
+  p$pulse_N <- function(t_) {
+    i_M_t = ifelse(t_ > 10 & t_ <= (20), 0, 0)
+    return(i_M_t)
   }
   
-  p=ggarrange(ggarrange(p1+theme(legend.position = "none"),
-                        p2+theme(legend.position = "none"),
-                        p3+theme(legend.position = "none"),
-                        ncol=3,align = "hv"),ggarrange(ggplot()+theme_void(),get_legend(p2),ggplot()+theme_void(),ncol=3,widths = c(.3,1,.3)),
-              nrow=2,heights = c(1,.1))
-  ggsave(paste0("../Figures/Random/PCA_colored_by_",metric_color,".pdf"),p, width=9,height = 4)
+  d=Compute_ode(ini,p,julia = F,n_time = 4000,model = "pulse")
+  Eq1=Get_equilibrium(d,p) #Equilibrium
+  
+  # perturbing the spatial flows
+  ini[1:14]=as.numeric(Eq1[1:14])
+  
+
+  if (sin){
+    
+    if (nutrient =="P"){
+      p$pulse_P <- function(t_) {
+        #i_M_t = ifelse(t_ > 100 & t_ <= (200), value_increase, 0)
+        i_M_t = (value_increase * (1+sin(10*t_)))
+        return(i_M_t)
+      }
+      p$pulse_N <- function(t_) {
+        i_M_t = ifelse(t_ > 100 & t_ <= (200), 0, 0)
+        return(i_M_t)
+      }
+      
+      
+    }else {
+      
+      p$pulse_P <- function(t_) {
+        i_M_t = ifelse(t_ > 100 & t_ <= (200), 0, 0)
+        return(i_M_t)
+      }
+      p$pulse_N <- function(t_) {
+        i_M_t = (value_increase * (1+sin(10*t_)))
+        return(i_M_t)
+      }
+      
+    }
+    
+  }else {
+    if (nutrient =="P"){
+      p$pulse_P <- function(t_) {
+        i_M_t = ifelse(t_ > 100 & t_ <= (200), value_increase, 0)
+        return(i_M_t)
+      }
+      p$pulse_N <- function(t_) {
+        i_M_t = ifelse(t_ > 100 & t_ <= (200), 0, 0)
+        return(i_M_t)
+      }
+      
+      
+    }else {
+      
+      p$pulse_P <- function(t_) {
+        i_M_t = ifelse(t_ > 100 & t_ <= (200), 0, 0)
+        return(i_M_t)
+      }
+      p$pulse_N <- function(t_) {
+        i_M_t = ifelse(t_ > 100 & t_ <= (200), value_increase, 0)
+        return(i_M_t)
+      }
+      
+    }
+  }
+  d2=Compute_ode(ini,p,julia = F,n_time = 300,model = "pulse")
+  d2$Time=c(4001:(4001+nrow(d2)-1))
+  
+  return(rbind(d,d2))
 }
+
+
+
+param_for_plot=expand.grid(
+  nutrient=c("P"),
+  value_increase = c(.5,2),
+  ID=c(50),
+  beta_A_=c(.012),
+  alpha_A_=c(.14),
+  sin=c(T,F))
+
+
+all_sim=list()
+for (i in 1:nrow(param_for_plot)){
+  print(i)
+  all_sim[[i]]=Get_transient_dynamics(
+    nutrient=param_for_plot$nutrient[i],
+    ID=param_for_plot$ID[i],value_increase = param_for_plot$value_increase[i],
+    beta_A_=param_for_plot$beta_A_[i],
+    alpha_A_=param_for_plot$alpha_A_[i],
+    sin=param_for_plot$sin[i]
+  )
+}
+
+
+
+p2=ggplot(all_sim[[2]]%>%
+            add_column(.,
+                       C_seston = .$Decomposers_C + .$Fixers_C + .$Non_fixers_C + .$Detritus_C,
+                       N_seston = .$Decomposers_N + .$Fixers_N + .$Non_fixers_N + .$Detritus_N,
+                       P_seston = .$Decomposers_P + .$Fixers_P + .$Non_fixers_P + .$Detritus_P)%>%
+            add_column(.,
+                       NC_seston = .$N_seston/.$C_seston,
+                       PC_seston = .$P_seston/.$C_seston)%>%dplyr::mutate(., Time=Time-3950)%>%
+            melt(., measure.vars=c("PC_seston","NC_seston","Fixers_C","Decomposers_C","Non_fixers_C"))%>%
+            mutate(., variable=recode_factor(variable,
+                                             "PC_seston"="P:C seston","NC_seston"="N:C seston",
+                                             "Decomposers_C"="Decomposers","Fixers_C"="Fixers","Non_fixers_C"="Non-fixers")))+
+  geom_line(aes(x=Time,y=value),lwd=1)+
+  # geom_hline(data = tibble(variable=c("P:C seston","N:C seston"),value=c(1/106,1/16)),aes(yintercept = value))+
+  facet_wrap(.~variable,scales="free")+the_theme2+
+  xlim(1,150)+
+  theme(strip.text.x = element_text(size=12),legend.text = element_text(size=15))+
+  guides(color = guide_legend(override.aes = list(size = 10)))
+
+
+
+p3=ggplot(all_sim[[3]]%>%
+            add_column(.,
+                       C_seston = .$Decomposers_C + .$Fixers_C + .$Non_fixers_C + .$Detritus_C,
+                       N_seston = .$Decomposers_N + .$Fixers_N + .$Non_fixers_N + .$Detritus_N,
+                       P_seston = .$Decomposers_P + .$Fixers_P + .$Non_fixers_P + .$Detritus_P)%>%
+            add_column(.,
+                       NC_seston = .$N_seston/.$C_seston,
+                       PC_seston = .$P_seston/.$C_seston)%>%dplyr::mutate(., Time=Time-3950)%>%
+            melt(., measure.vars=c("PC_seston","NC_seston","Fixers_C","Decomposers_C","Non_fixers_C"))%>%
+            mutate(., variable=recode_factor(variable,
+                                             "PC_seston"="P:C seston","NC_seston"="N:C seston",
+                                             "Decomposers_C"="Decomposers","Fixers_C"="Fixers","Non_fixers_C"="Non-fixers")))+
+  geom_line(aes(x=Time,y=value),lwd=1)+
+  # geom_hline(data = tibble(variable=c("P:C seston","N:C seston"),value=c(1/106,1/16)),aes(yintercept = value))+
+  geom_rect(data=tibble(xmin=150,xmax=250,ymin=-Inf,ymax=Inf),
+            aes(xmin=xmin,ymin=ymin,xmax=xmax,ymax=ymax),fill="grey",alpha=.5)+
+  facet_wrap(.~variable,scales="free")+the_theme2+
+  theme(strip.text.x = element_text(size=12),legend.text = element_text(size=15))+
+  guides(color = guide_legend(override.aes = list(size = 10)))+  xlim(0,350)
+
+
+
+p4=ggplot(all_sim[[4]]%>%
+            add_column(.,
+                       C_seston = .$Decomposers_C + .$Fixers_C + .$Non_fixers_C + .$Detritus_C,
+                       N_seston = .$Decomposers_N + .$Fixers_N + .$Non_fixers_N + .$Detritus_N,
+                       P_seston = .$Decomposers_P + .$Fixers_P + .$Non_fixers_P + .$Detritus_P)%>%
+            add_column(.,
+                       NC_seston = .$N_seston/.$C_seston,
+                       PC_seston = .$P_seston/.$C_seston)%>%dplyr::mutate(., Time=Time-3950)%>%
+            melt(., measure.vars=c("PC_seston","NC_seston","Fixers_C","Decomposers_C","Non_fixers_C"))%>%
+            mutate(., variable=recode_factor(variable,
+                                             "PC_seston"="P:C seston","NC_seston"="N:C seston",
+                                             "Decomposers_C"="Decomposers","Fixers_C"="Fixers","Non_fixers_C"="Non-fixers")))+
+  geom_line(aes(x=Time,y=value),lwd=1)+
+  # geom_hline(data = tibble(variable=c("P:C seston","N:C seston"),value=c(1/106,1/16)),aes(yintercept = value))+
+  geom_rect(data=tibble(xmin=150,xmax=250,ymin=-Inf,ymax=Inf),
+            aes(xmin=xmin,ymin=ymin,xmax=xmax,ymax=ymax),fill="grey",alpha=.5)+
+  facet_wrap(.~variable,scales="free")+the_theme2+
+  theme(strip.text.x = element_text(size=12),legend.text = element_text(size=15))+
+  guides(color = guide_legend(override.aes = list(size = 10)))+
+  xlim(0,350)
+
+
+p_tot=ggarrange(p2+labs(y="")+ggtitle("Seasonal change of allochtonous P:C"),
+                p4+labs(y="")+ggtitle("Transient increase of allochtonous P:C"),nrow = 2)
+
+
+ggsave("../Figures/Final_figs/SI/Seasonal_change.pdf",p_tot,width = 9,height = 10)
+
+
 

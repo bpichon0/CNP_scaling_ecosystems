@@ -2,7 +2,7 @@ packages = c(
   "tidyverse", "ggpubr", "latex2exp", "deSolve", "reshape2", "igraph", "ggforce",
   "JuliaCall", "diffeqr", "phaseR", "ggtext", "viridis", "rootSolve",
   "ggquiver", "scales", "boot", "RColorBrewer", "ggnewscale","ggpattern","FME",
-  "FactoMineR","factoextra"
+  "FactoMineR","factoextra","MASS"
 )
 
 # install pacakges if not installed already
@@ -11,16 +11,16 @@ install.packages(setdiff(packages, rownames(installed.packages())))
 
 x = c(
   "tidyverse", "ggpubr", "latex2exp", "deSolve", "reshape2", "igraph", "ggforce",
-  "JuliaCall", "diffeqr", "phaseR", "ggtext", "viridis", "rootSolve",
+  "JuliaCall", "diffeqr", "phaseR", "ggtext", "viridis", "rootSolve","ggtern",
   "ggquiver", "scales", "boot", "RColorBrewer", "ggnewscale","ggpattern","FME",
-  "FactoMineR","factoextra"
+  "FactoMineR","factoextra","MASS"
 )
 
 lapply(x, require, character.only = TRUE)
 
-# julia_setup()
-# de = diffeq_setup()
-# julia_library("DifferentialEquations")
+julia_setup()
+de = diffeq_setup()
+julia_library("DifferentialEquations")
 
 the_theme = theme_classic() + theme(
   legend.position = "bottom",
@@ -47,9 +47,26 @@ pal_terr=colorRampPalette((c("white","#D8ECCD","#BBE0A7","#86D45C","#3BA23B","#0
 the_theme=theme_classic()+theme(legend.position = "bottom",
                                 strip.background = element_rect(fill = "#CCE8D8"),
                                 strip.text.y = element_text(size = 10, angle = -90),
-                                strip.text.x = element_text(size = 8),axis.text = element_text(size=11),axis.title = element_text(size=13),
-                                legend.text = element_text(size = 10),text = element_text(family = "NewCenturySchoolbook"))
+                                strip.text.x = element_text(size = 8),
+                                axis.text = element_text(size=11),
+                                axis.title = element_text(size=13),
+                                legend.text = element_text(size = 10),
+                                text = element_text(family = "NewCenturySchoolbook"))
 
+the_theme2 = theme_classic() + theme(
+  legend.position = "bottom",
+  panel.border = element_rect(colour = "black", fill=NA),
+  strip.background = element_rect(fill = "transparent",color="transparent"),
+  strip.text.y = element_text(size = 10, angle = -90),
+  strip.text.x = element_text(size = 10),
+  title = element_text(size=10),
+  axis.title.y=element_text(size = 11),
+  axis.title.x=element_text(size = 11),
+  #legend.box="vertical",
+  legend.title = element_text(size = 11),
+  legend.text = element_text(size = 10), 
+  text = element_text(family = "NewCenturySchoolbook")
+)
 
 
 ## Creating folders
@@ -63,6 +80,16 @@ dir.create("../Table/", showWarnings = FALSE)
 
 # ------------------------------ Parameters and dynamics related function ---- 
 # >> Parameters ----
+
+Cut_intervals_vector=function(x,nbreak=10){
+  my_breaks=seq(min(x,na.rm = T),max(x,na.rm = T),length.out=nbreak)
+  mean_intervals=sapply(1:(length(my_breaks)-1),function(z){
+    return(mean(c(my_breaks[z],my_breaks[z+1])))
+  })
+  cutting_x=cut(x,breaks = my_breaks,labels = mean_intervals)
+  return(as.numeric(cutting_x))
+}
+
 
 eval_string = function(string, ...) eval(parse(text = string), ...)
 
@@ -159,6 +186,101 @@ Get_classical_param_lake = function() {
   return(param)
 }
 
+
+Get_parameter_lake_variable_stoichio = function(kP, kN, muF, muO, dO, dF, beta_F, alpha_F, beta_O, alpha_O,        # plankton
+                                                eB, aN, aP, aD, dB, m, alpha_B, beta_B,                    # decomposers
+                                                IN, IP, ID, lN, lP, lD, beta_allo, alpha_allo, same_stoichio,    # allochtonous flows
+                                                functional_response_phyto, DC_,sO,sB,sF
+) { 
+  return(
+    list(
+      
+      #Planktonic species
+      
+      kP      = kP,      # half-saturating constant P intake
+      kN      = kN,      # half-saturating constant N intake
+      muF      = muF,      # maximal growth rate fixers
+      muO      = muO,      # maximal growth rate non-fixers
+      dF      = dF,      # death rate fixers
+      dO      = dO,      # death rate non-fixers
+      beta_F  = beta_F,  # P:C fixers
+      beta_O  = beta_O,  # P:C non-fixers
+      alpha_F = alpha_F, # N:C fixers
+      alpha_O = alpha_O, # N:C non-fixers
+      
+      #Decomposers and decomposition
+      
+      eB  = eB, # Decomposers efficiency
+      aN  = aN, # Decomposers attack rate on nitrogen
+      aP  = aP, # Decomposers attack rate on phosphorous
+      aD  = aD, # Decomposers attack rate on detritus
+      m  = m,   # Mineralization rate 
+      dB  = dB, # Decomposers death rate
+      alpha_B  = alpha_B, # Decomposers N:C ratio
+      beta_B   = beta_B, # Decomposers N:C ratio
+      
+      # Allochtonous flows
+      
+      IN = IN, # Allochtonous inputs of nitrogen
+      IP = IP, # Allochtonous inputs of phosphorous
+      ID = ID, # Allochtonous inputs of detritus
+      lN = lN, # Leaching rate of nitrogen
+      lP = lP, # Leaching rate of phosphorous
+      lD = lD, # Leaching rate of detritus
+      beta_allo  = beta_allo,  # P:C ratio of allochtonous flows
+      alpha_allo = alpha_allo,  # N:C ratio of allochtonous flows
+      same_stoichio = same_stoichio, #Does allochtonous flows have the same stoichio as in the ecosystem
+      functional_response_phyto=functional_response_phyto, # Type I or type II or DC
+      DC_=DC_,
+      sB = sB, # self-regulation of decomposers 
+      sF = sF, # self-regulation of fixers
+      sO = sO  # self-regulation of non-fixers
+    )
+  )
+}
+
+Get_classical_param_lake_variable_stoichio = function() {
+  # We take 3 different scenarios
+  `%!in%` = Negate(`%in%`)
+  param = Get_parameter_lake(
+    kP      = .1,
+    kN      = .1,
+    muF     = .24,
+    muO     = .25,
+    dF      = .2,
+    dO      = .2,
+    beta_F  = 1/(16*8),
+    beta_O  = 1/(16*8),
+    beta_B  = .15/10,
+    alpha_F = 1/8,
+    alpha_O = 1/8,
+    alpha_B = .15,
+    eB = .5,
+    aN = .4,
+    aP = .4,
+    aD = .83,
+    m  = .5,
+    dB = .1,
+    IN = 5,
+    IP = 1,
+    ID = 1,
+    lN = 1,
+    lP = 1,
+    lD = 2,
+    beta_allo  = .05/10,
+    alpha_allo = .05,
+    same_stoichio=F,
+    functional_response_phyto=1,
+    DC_=F,
+    sF=1,
+    sO=1,
+    sB=1
+  )
+  
+  return(param)
+}
+
+
 Get_initial_values = function(param,random_=F) {
   
   if (random_){
@@ -170,7 +292,7 @@ Get_initial_values = function(param,random_=F) {
               "OC" = 2,"ON" = 2,"OP" = 2, "DC" = 2, "DN" = .1, "DP" = .01,
               "N" = 3, "P" = 2)
   }
- 
+  
   state["BN"] = param$alpha_B * state["BC"]
   state["BP"] = param$beta_B  * state["BC"]
   state["FN"] = param$alpha_F * state["FC"]
@@ -184,91 +306,91 @@ Get_initial_values = function(param,random_=F) {
 # >> Dynamics ----
 
 
-# ode_lake_CNP_regulation = julia_eval("
-# 
-# function ode_lake_CNP_regulation(du, u, p, t)
-# 
-#     u[u .< 10^-8] .= 0
-#     kP, kN, muF, muO, dF,dO, beta_F, beta_O,alpha_F, alpha_O,eB, aN, aP, aD, m,dB, alpha_B, beta_B, IN, IP, ID, lN, lP, lD, beta_allo, alpha_allo,same_stoichio,functional_response_phyto,DC_, sB, sF, sO = p
-#     BC, BN, BP, FC,FN,FP, OC,ON,OP, DC, DN, DP, N, P  = u
-# 
-# 
-#     if (DC_==1) #donnor controlled
-#       gO_NP = copy((muO * min(P, N))) # growth rate non-fixer
-#       gF_P  = copy((muF * P))             # growth rate fixer
-#       uptake_D = copy(eB * aD * DC)             # uptake detritus
-#       uptake_N = copy(aN * N)                   # uptake nitrogen
-#       uptake_P = copy(aP * P)                   # uptake phosphorous
-# 
-#     else
-#       if functional_response_phyto==1
-#          gO_NP = copy(muO * min(P, N) * OC)  # growth rate non-fixer
-#          gF_P  = copy(muF * P * FC)             # growth rate fixer
-#       else #type 2
-#          gO_NP = copy(muO * min(P/(kP+P),N/(kN+N)) * OC) # growth rate non-fixer
-#          gF_P  = copy((muF * P)/(kP+P) * FC)             # growth rate fixer
-#       end
-#       uptake_D = copy(eB * aD * DC * BC)             # uptake detritus
-#       uptake_N = copy(aN * N * BC)                   # uptake nitrogen
-#       uptake_P = copy(aP * P * BC)                   # uptake phosphorous
-# 
-#     end
-# 
-#     beta_D  = copy(DP/DC)                     # P:C ratio detritus in the lake
-#     alpha_D = copy(DN/DC)                     # N:C ratio detritus in the lake
-# 
-# 
-#     # we below write phi_i_j the decomposer function (immobilization/mineralization or decomposition) under the limitation j
-#     # phi_P_C would for instance be the immobilization/mineralization of P under C-limitation of decomposers
-# 
-#     if same_stoichio == 1
-#        alpha_allo = copy(alpha_D)
-#        beta_allo  = copy(beta_D)
-#     end
-# 
-#     phi_P_C_lim = copy((uptake_D * (beta_B - beta_D)) / beta_B)
-#     phi_P_N_lim = copy(((beta_B - beta_D) * alpha_B / ( (alpha_B - alpha_D) * beta_B)) * uptake_N)
-#     phi_P_P_lim = copy(uptake_P)
-# 
-#     phi_P =  copy(min.(phi_P_C_lim,phi_P_N_lim,phi_P_P_lim))      # immobilization/mineralization of P
-#     phi_N =  copy((( (alpha_B - alpha_D) * beta_B) / ((beta_B - beta_D) * alpha_B)) * phi_P)      # immobilization/mineralization of N
-#     phi_D =  copy(beta_B  * phi_P / (beta_B  - beta_D))      # decomposition of detritus
-# 
-#     #Now the dynamics :
-# 
-#     #DECOMPOSERS
-#     du[1] = phi_D                                       - dB * BC           - m * BC  -           sB * BC * BC          #BC
-#     du[2] = phi_D * alpha_D + phi_N * alpha_B - alpha_B * dB * BC - alpha_B * m * BC  - alpha_B * sB * BC * BC          #BN
-#     du[3] = phi_D * beta_D  + phi_P * beta_B  - beta_B  * dB * BC - beta_B  * m * BC  - beta_B  * sB * BC * BC          #BP
-# 
-#     #PLANKTON
-#     du[4] =            gF_P  - dF * FC    -           sF * FC * FC                     #FC
-#     du[5] = alpha_F * (gF_P  - dF * FC)   - alpha_F * sF * FC * FC                     #FN
-#     du[6] = beta_F  * (gF_P  - dF * FC)   - beta_F  * sF * FC * FC                     #FP
-#     du[7] =            gO_NP - dO * OC    -           sO * OC * OC                     #OC
-#     du[8] = alpha_O * (gO_NP - dO * OC)   - alpha_O * sO * OC * OC                     #ON
-#     du[9] = beta_O  * (gO_NP - dO * OC)   - beta_O  * sO * OC * OC                     #OP
-# 
-#     #DETRITUS
-#     du[10] = ID - lD * DC + dB * BC + dF * FC + dO * OC - phi_D                #DC
-# 
-#     du[11] = ID * alpha_allo - lD * DN + alpha_B * dB * BC +                   #DN
-#       alpha_F * dF * FC + alpha_O * dO * OC - phi_D * alpha_D
-# 
-#     du[12] = ID * beta_allo  - lD * DP + beta_B  * dB * BC +                   #DP
-#       beta_F  * dF * FC + beta_O  * dO * OC - phi_D * beta_D
-# 
-#     #NITROGEN
-#     du[13] = IN - lN * N - alpha_O * gO_NP  -                              #N
-#       alpha_B * phi_N + alpha_B * m * BC
-# 
-#     #PHOSPHOROUS
-#     du[14] = IP - lP * P - beta_O * gO_NP   - beta_F  * gF_P  -        #P
-#       beta_B * phi_P  + beta_B  * m * BC
-# 
-# end
-# 
-# ")
+ode_lake_CNP_regulation = julia_eval("
+
+function ode_lake_CNP_regulation(du, u, p, t)
+
+    u[u .< 10^-3] .= 0
+    kP, kN, muF, muO, dF,dO, beta_F, beta_O,alpha_F, alpha_O,eB, aN, aP, aD, m,dB, alpha_B, beta_B, IN, IP, ID, lN, lP, lD, beta_allo, alpha_allo,same_stoichio,functional_response_phyto,DC_, sB, sF, sO = p
+    BC, BN, BP, FC,FN,FP, OC,ON,OP, DC, DN, DP, N, P  = u
+
+
+    if (DC_==1) #donnor controlled
+      gO_NP = copy((muO * min(P, N))) # growth rate non-fixer
+      gF_P  = copy((muF * P))             # growth rate fixer
+      uptake_D = copy(eB * aD * DC)             # uptake detritus
+      uptake_N = copy(aN * N)                   # uptake nitrogen
+      uptake_P = copy(aP * P)                   # uptake phosphorous
+
+    else
+      if functional_response_phyto==1
+         gO_NP = copy(muO * min(P, N) * OC)  # growth rate non-fixer
+         gF_P  = copy(muF * P * FC)             # growth rate fixer
+      else #type 2
+         gO_NP = copy(muO * min(P/(kP+P),N/(kN+N)) * OC) # growth rate non-fixer
+         gF_P  = copy((muF * P)/(kP+P) * FC)             # growth rate fixer
+      end
+      uptake_D = copy(eB * aD * DC * BC)             # uptake detritus
+      uptake_N = copy(aN * N * BC)                   # uptake nitrogen
+      uptake_P = copy(aP * P * BC)                   # uptake phosphorous
+
+    end
+
+    beta_D  = copy(DP/DC)                     # P:C ratio detritus in the lake
+    alpha_D = copy(DN/DC)                     # N:C ratio detritus in the lake
+
+
+    # we below write phi_i_j the decomposer function (immobilization/mineralization or decomposition) under the limitation j
+    # phi_P_C would for instance be the immobilization/mineralization of P under C-limitation of decomposers
+
+    if same_stoichio == 1
+       alpha_allo = copy(alpha_D)
+       beta_allo  = copy(beta_D)
+    end
+
+    phi_P_C_lim = copy((uptake_D * (beta_B - beta_D)) / beta_B)
+    phi_P_N_lim = copy(((beta_B - beta_D) * alpha_B / ( (alpha_B - alpha_D) * beta_B)) * uptake_N)
+    phi_P_P_lim = copy(uptake_P)
+
+    phi_P =  copy(min.(phi_P_C_lim,phi_P_N_lim,phi_P_P_lim))      # immobilization/mineralization of P
+    phi_N =  copy((( (alpha_B - alpha_D) * beta_B) / ((beta_B - beta_D) * alpha_B)) * phi_P)      # immobilization/mineralization of N
+    phi_D =  copy(beta_B  * phi_P / (beta_B  - beta_D))      # decomposition of detritus
+
+    #Now the dynamics :
+
+    #DECOMPOSERS
+    du[1] = phi_D                                       - dB * BC           - m * BC  -           sB * BC * BC          #BC
+    du[2] = phi_D * alpha_D + phi_N * alpha_B - alpha_B * dB * BC - alpha_B * m * BC  - alpha_B * sB * BC * BC          #BN
+    du[3] = phi_D * beta_D  + phi_P * beta_B  - beta_B  * dB * BC - beta_B  * m * BC  - beta_B  * sB * BC * BC          #BP
+
+    #PLANKTON
+    du[4] =            gF_P  - dF * FC    -           sF * FC * FC                     #FC
+    du[5] = alpha_F * (gF_P  - dF * FC)   - alpha_F * sF * FC * FC                     #FN
+    du[6] = beta_F  * (gF_P  - dF * FC)   - beta_F  * sF * FC * FC                     #FP
+    du[7] =            gO_NP - dO * OC    -           sO * OC * OC                     #OC
+    du[8] = alpha_O * (gO_NP - dO * OC)   - alpha_O * sO * OC * OC                     #ON
+    du[9] = beta_O  * (gO_NP - dO * OC)   - beta_O  * sO * OC * OC                     #OP
+
+    #DETRITUS
+    du[10] = ID - lD * DC + dB * BC + dF * FC + dO * OC - phi_D                #DC
+
+    du[11] = ID * alpha_allo - lD * DN + alpha_B * dB * BC +                   #DN
+      alpha_F * dF * FC + alpha_O * dO * OC - phi_D * alpha_D
+
+    du[12] = ID * beta_allo  - lD * DP + beta_B  * dB * BC +                   #DP
+      beta_F  * dF * FC + beta_O  * dO * OC - phi_D * beta_D
+
+    #NITROGEN
+    du[13] = IN - lN * N - alpha_O * gO_NP  -                              #N
+      alpha_B * phi_N + alpha_B * m * BC
+
+    #PHOSPHOROUS
+    du[14] = IP - lP * P - beta_O * gO_NP   - beta_F  * gF_P  -        #P
+      beta_B * phi_P  + beta_B  * m * BC
+
+end
+
+")
 
 # for (k in 1:length(param)){assign(names(param)[k],param[[k]])}
 
@@ -276,9 +398,11 @@ Get_initial_values = function(param,random_=F) {
 
 ode_lake_CNP_R = function(t,y,param){ 
   
-  y[y < 10^-8] = 0 # prevent numerical problems
+  y[y < 10^-3] = 0 # prevent numerical problems
   
   with(as.list(c(y, param)),{
+    
+    
     
     if (DC_){ #donnor controlled
       
@@ -324,10 +448,7 @@ ode_lake_CNP_R = function(t,y,param){
     phi_N =  (( (alpha_B - alpha_D) * beta_B) / ((beta_B - beta_D) * alpha_B)) * phi_P      # immobilization/mineralization of N
     phi_D =  beta_B  * phi_P / (beta_B  - beta_D)      # decomposition of detritus
     
-    
-    
     #Now the dynamics :
-    
     du=rep(NA,14)
     
     #DECOMPOSERS     
@@ -370,10 +491,108 @@ ode_lake_CNP_R = function(t,y,param){
 
 ode_lake_CNP_R_flexible = function(t,y,param){ 
   
-  y[y < 10^-8] = 0 # prevent numerical problems
+  y[y < 10^-3] = 0 # prevent numerical problems
   
   with(as.list(c(y, param)),{
     
+    if (DC_){ #donnor controlled
+      
+      gO_NP = (muO * min(P, N))             # growth rate non-fixer
+      gF_P  = (muF * P)                     # growth rate fixer
+      uptake_D = (eB * aD * DC)             # uptake detritus
+      uptake_N = (aN * N)                   # uptake nitrogen
+      uptake_P = (aP * P)                   # uptake phosphorous
+      
+    } else{
+      if (functional_response_phyto==1){
+        
+        gO_NP = muO * min(P, N) * OC     # growth rate non-fixer
+        gF_P  = muF * P * FC             # growth rate fixer
+        
+      }else{ #type 2
+        
+        gO_NP = muO * min(P/(kP+P),N/(kN+N)) * OC # growth rate non-fixer
+        gF_P  = (muF * P)/(kP+P) * FC             # growth rate fixer
+      }
+      uptake_D = eB * aD * DC * BC             # uptake detritus
+      uptake_N = aN * N * BC                   # uptake nitrogen
+      uptake_P = aP * P * BC                   # uptake phosphorous
+    }
+    
+    beta_D  = DP/DC                     # P:C ratio detritus allocht
+    alpha_D = DN/DC                     # N:C ratio detritus
+    
+    if (same_stoichio){
+      alpha_allo = alpha_D
+      beta_allo  = beta_D
+    }
+    
+    # we below write phi_i_j the decomposer function (immobilization/mineralization or decomposition) under the limitation j
+    # phi_P_C would for instance be the immobilization/mineralization of P under C-limitation of decomposers
+    
+    #immobilization/mineralization P
+    phi_P_C_lim = (uptake_D * (beta_B - beta_D)) / beta_B
+    phi_P_N_lim = ((beta_B - beta_D) * alpha_B / ( (alpha_B - alpha_D) * beta_B)) * uptake_N
+    phi_P_P_lim = uptake_P
+    
+    phi_P =  min(c(phi_P_C_lim,phi_P_N_lim,phi_P_P_lim))      # immobilization/mineralization of P
+    phi_N =  (( (alpha_B - alpha_D) * beta_B) / ((beta_B - beta_D) * alpha_B)) * phi_P      # immobilization/mineralization of N
+    phi_D =  beta_B  * phi_P / (beta_B  - beta_D)      # decomposition of detritus
+    
+    
+    #Now the dynamics :
+    
+    du=rep(NA,14)
+    
+    #DECOMPOSERS     
+    du[1] = phi_D                             -           dB * BC           - m * BC  -           sB * BC * BC  #BC
+    du[2] = phi_D * alpha_D + phi_N * alpha_B - alpha_B * dB * BC - alpha_B * m * BC  - alpha_B * sB * BC * BC  #BN
+    du[3] = phi_D * beta_D  + phi_P * beta_B  - beta_B  * dB * BC - beta_B  * m * BC  - beta_B  * sB * BC * BC  #BP
+    
+    #PLANKTON
+    du[4] =            gF_P  - dF * FC    -            sF * FC * FC     #FC
+    du[5] = alpha_F * (gF_P  - dF * FC)   - alpha_F  * sF * FC * FC     #FN
+    du[6] = beta_F  * (gF_P  - dF * FC)   - beta_F   * sF * FC * FC     #FP
+    du[7] =            gO_NP - dO * OC    -            sO * OC * OC     #OC
+    du[8] = alpha_O * (gO_NP - dO * OC)   - alpha_O  * sO * OC * OC     #ON
+    du[9] = beta_O  * (gO_NP - dO * OC)   - beta_O   * sO * OC * OC     #OP
+    
+    #DETRITUS 
+    du[10] = ID - lD * DC + dB * BC + dF * FC + dO * OC - phi_D                #DC  
+    
+    du[11] = ID * alpha_allo - lD * DN + alpha_B * dB * BC +                   #DN
+      alpha_F * dF * FC + alpha_O * dO * OC - phi_D * alpha_D                                    
+    
+    du[12] = ID * beta_allo  - lD * DP + beta_B  * dB * BC +                   #DP
+      beta_F  * dF * FC + beta_O  * dO * OC - phi_D * beta_D                                    
+    
+    #NITROGEN 
+    du[13] = IN - lN * N - alpha_O * gO_NP  - #- alpha_F * gF_P * FC       #N                           
+      alpha_B * phi_N + alpha_B * m * BC
+    
+    #PHOSPHOROUS 
+    du[14] = IP - lP * P - beta_O  * gO_NP   - beta_F  * gF_P  -        #P                      
+      beta_B * phi_P  + beta_B  * m * BC
+    
+    #sum(du)
+    #IP+ID+IN+ID * alpha_allo+ID * beta_allo-m * BC-lN * N-lP * P-lD * DC-lD * DN-lD * DP
+    
+    list(du)
+    
+  })
+}
+
+ode_lake_CNP_pulse = function(t,y,param){ 
+  
+  y[y < 10^-3] = 0 # prevent numerical problems
+  
+  iC = param$pulse_C(t)
+  iN = param$pulse_N(t)
+  iP = param$pulse_P(t)
+  
+  
+  with(as.list(c(y, param)),{
+  
     if (DC_){ #donnor controlled
       
       gO_NP = (muO * min(P, N))             # growth rate non-fixer
@@ -438,20 +657,20 @@ ode_lake_CNP_R_flexible = function(t,y,param){
     du[9] = beta_O  * (gO_NP - dO * OC)   - beta_O   * sO * OC * OC     #OP
     
     #DETRITUS 
-    du[10] = ID - lD * DC + dB * BC + dF * FC + dO * OC - phi_D                #DC  
+    du[10] = ID + iC - lD * DC + dB * BC + dF * FC + dO * OC - phi_D                #DC  
     
-    du[11] = ID * alpha_allo - lD * DN + alpha_B * dB * BC +                   #DN
+    du[11] = (ID + iC) * alpha_allo - lD * DN + alpha_B * dB * BC +                   #DN
       alpha_F * dF * FC + alpha_O * dO * OC - phi_D * alpha_D                                    
     
-    du[12] = ID * beta_allo  - lD * DP + beta_B  * dB * BC +                   #DP
+    du[12] = (ID + iC) * beta_allo  - lD * DP + beta_B  * dB * BC +                   #DP
       beta_F  * dF * FC + beta_O  * dO * OC - phi_D * beta_D                                    
     
     #NITROGEN 
-    du[13] = IN - lN * N - alpha_O * gO_NP  - #- alpha_F * gF_P * FC       #N                           
+    du[13] = IN  + iN - lN * N - alpha_O * gO_NP  - #- alpha_F * gF_P * FC       #N                           
       alpha_B * phi_N + alpha_B * m * BC
     
     #PHOSPHOROUS 
-    du[14] = IP - lP * P - beta_O  * gO_NP   - beta_F  * gF_P  -        #P                      
+    du[14] = IP + iP - lP * P - beta_O  * gO_NP   - beta_F  * gF_P  -        #P                      
       beta_B * phi_P  + beta_B  * m * BC
     
     #sum(du)
@@ -468,6 +687,7 @@ Compute_ode = function(state,             # initial biomass and densities
                        n_time = 10000,    # maximal time 
                        julia=T,           # if F, the dynamics are computed on R
                        solver="lsoda",
+                       dt = 1,
                        model= "Tyrrell"
 ) {
   
@@ -481,21 +701,39 @@ Compute_ode = function(state,             # initial biomass and densities
     tspan = c(0, n_time) # to avoid long transient
     julia_assign("tspan", tspan)
     
+    # julia_command("threshold = 0.001")
+    # julia_command("condition(u,t,integrator) = any( (u .< threshold) .& (u.>0))")
+    # julia_command("function affect!(integrator)  integrator.u[(integrator.u .< threshold) .& (integrator.u .> 0)] .= 0 end")
+    # julia_command("cb = DiscreteCallback(condition,affect!)")
+    
     prob = julia_eval("ODEProblem(ode_lake_CNP_regulation, state, tspan, p)")
     
-    sol = de$solve(prob, de$Tsit5())
+    sol = de$solve(prob, de$Tsit5(),abstol=1e-8,reltol=1e-8,saveat=.1)
     d = as.data.frame(t(sapply(sol$u, identity)))
     d$time = sol$t
     d=d[,c(ncol(d),1:(ncol(d)-1))]
   } else {
     
-    times=seq(0,n_time,1)
+    times=seq(0,n_time,dt)
     if (model=="Tyrrell"){
+      
+      
+      rootfun = function (t, y, pars) {
+        return(y - eps)
+      }
+      
+      
+      eventfun = function(t, y, pars) {
+        y[which(y <= eps)]=0
+        return(y)
+      }
+      eps=1e-3
       d=as.data.frame(ode(y=state,times=times,func=ode_lake_CNP_R,
-                          parms = param,method = solver))
-    }else{
-      param$Fix=.5
-      d=as.data.frame(ode(y=state,times=times,func=ode_lake_CNP_R_Koffel,
+                          parms = param,method = solver),
+                      rootfun = rootfun,
+                      events = list(func = eventfun, root = TRUE))
+    }else if (model=="pulse"){
+      d=as.data.frame(ode(y=state,times=times,func=ode_lake_CNP_R_flexible,
                           parms = param,method = solver))
     }
     
@@ -524,10 +762,6 @@ plot_dynamics = function(data, log_ = T) {
            "Nitrogen"="#4A50FF",
            "Phosphorous"="#926CAB")
   p = ggplot(data%>%
-               add_column(., 
-                          NC_Detritus=.$Detritus_N/.$Detritus_C,
-                          PC_Detritus=.$Detritus_P/.$Detritus_C
-               )%>%
                melt(., id.vars="Time")%>%
                filter(., variable %in% c("Decomposers_C","Fixers_C",
                                          "Non_fixers_C","Detritus_C",
@@ -621,6 +855,15 @@ Get_CNP = function(data, param) {
   
   NP_dissoluted = data$Nitrogen / data$Phosphorous
   
+  C_organic = data$Decomposers_C + data$Fixers_C + data$Non_fixers_C
+  N_organic = data$Decomposers_N + data$Fixers_N + data$Non_fixers_N
+  P_organic = data$Decomposers_P + data$Fixers_P + data$Non_fixers_P
+  
+  CN_organic = C_organic/N_organic
+  CP_organic = C_organic/P_organic
+  NP_organic = N_organic/P_organic
+  
+  
   #mean over organisms and detritus
   
   C_seston = data$Decomposers_C + data$Fixers_C + data$Non_fixers_C + data$Detritus_C
@@ -635,16 +878,31 @@ Get_CNP = function(data, param) {
   
   frac_decompo = data$Decomposers_C / (data$Decomposers_C + data$Fixers_C + data$Non_fixers_C)
   
-  return(list(CN_seston = CN_seston,
-              CP_seston = CP_seston,
-              NP_seston = NP_seston,
-              C_seston  = C_seston, 
-              N_seston  = N_seston, 
-              P_seston  = P_seston, 
+  #mean over organisms and detritus
+  
+  N_total = data$Decomposers_N + data$Fixers_N + data$Non_fixers_N + data$Detritus_N + data$Nitrogen
+  P_total = data$Decomposers_P + data$Fixers_P + data$Non_fixers_P + data$Detritus_P + data$Phosphorous
+  
+  CN_total = C_seston/N_total
+  CP_total = C_seston/P_total
+  NP_total = N_total/P_total
+  
+  return(list(CN_seston     = CN_seston,
+              CP_seston     = CP_seston,
+              NP_seston     = NP_seston,
+              CN_total      = CN_total,
+              CP_total      = CP_total,
+              NP_total      = NP_total,
+              C_seston      = C_seston, 
+              N_seston      = N_seston, 
+              P_seston      = P_seston, 
+              C_organic      = C_organic, 
+              N_organic      = N_organic, 
+              P_organic      = P_organic, 
               NP_dissoluted = NP_dissoluted,
-              NC_detritus = alpha_D,
-              PC_detritus = beta_D,
-              Frac_decomp = frac_decompo))
+              NC_detritus   = alpha_D,
+              PC_detritus   = beta_D,
+              Frac_decomp   = frac_decompo))
 }
 
 Plot_with_limitation=function(data,driver="ID",y_variable){
@@ -656,26 +914,26 @@ Plot_with_limitation=function(data,driver="ID",y_variable){
   
   for (k in unique(data$Limitation_Decompo)){
     
-    assign(paste0("min_",k),min(data$value_driver[which(data$Limitation_Decompo==k)]))
-    assign(paste0("max_",k),max(data$value_driver[which(data$Limitation_Decompo==k)]))
+    assign(paste0("min_",k),min(data$value_driver[which(data$Limitation_Decompo==k)],na.rm = T))
+    assign(paste0("max_",k),max(data$value_driver[which(data$Limitation_Decompo==k)],na.rm = T))
     
   } 
   
   if (length(unique(data$Limitation_NF))==1){
-    min_NF=min(data$value_driver)
-    max_NF=max(data$value_driver)
+    min_NF=min(data$value_driver,na.rm = T)
+    max_NF=max(data$value_driver,na.rm = T)
   }else{
     for (k in unique(data$Limitation_NF)){
       
-      assign(paste0("min_NF_",k),min(data$value_driver[which(data$Limitation_NF==k)]))
-      assign(paste0("max_NF_",k),max(data$value_driver[which(data$Limitation_NF==k)]))
+      assign(paste0("min_NF_",k),min(data$value_driver[which(data$Limitation_NF==k)],na.rm = T))
+      assign(paste0("max_NF_",k),max(data$value_driver[which(data$Limitation_NF==k)],na.rm = T))
       
     } 
   }
   
-  min_y=min(data$value_y)
-  max_y=max(data$value_y)
-
+  min_y=min(data$value_y,na.rm = T)
+  max_y=max(data$value_y,na.rm = T)
+  
   diff_y=max_y-min_y
   min_y_pattern=max_y+.025*diff_y
   max_y_pattern=max_y+.125*diff_y
@@ -777,7 +1035,7 @@ Plot_with_limitation=function(data,driver="ID",y_variable){
       
     }
     
-
+    
   }else if ("P" %in% unique(data$Limitation_Decompo) & 
             "C" %in% unique(data$Limitation_Decompo) & 
             "N" %in% unique(data$Limitation_Decompo) ){
@@ -796,19 +1054,19 @@ Plot_with_limitation=function(data,driver="ID",y_variable){
       
       p=ggplot(NULL)+
         geom_rect(data=d_rect,aes(xmin=min_x,xmax=max_x,ymin=min_y,ymax=max_y,fill=color),
-                          alpha=.3)+
+                  alpha=.3)+
         geom_rect_pattern(data=NULL,aes(xmin=min_NF,xmax=max_NF,ymin=min_y_pattern,ymax=max_y_pattern,pattern=data$Limitation_NF[1]),
                           alpha=.3,fill="grey")+
         scale_fill_manual(values=color_graph)+
         scale_pattern_manual(values = c("N" = "none", "P" = "stripe"))
-
+      
     }else{
       
       d_rect2=tibble(min_x=c(min_NF_N,min_NF_P),
-                    max_x=c(max_NF_N,max_NF_P),
-                    min_y=min_y,
-                    max_y=max_y,
-                    pattern=c("N","P"))%>%
+                     max_x=c(max_NF_N,max_NF_P),
+                     min_y=min_y,
+                     max_y=max_y,
+                     pattern=c("N","P"))%>%
         dplyr::arrange(., min_x)
       
       
@@ -816,7 +1074,7 @@ Plot_with_limitation=function(data,driver="ID",y_variable){
         geom_rect(data=d_rect,aes(xmin=min_x,xmax=max_x,ymin=min_y,ymax=max_y,fill=color),
                   alpha=.3)+
         geom_rect_pattern(data=d_rect2,aes(xmin=min_x,xmax=max_x,ymin=min_y_pattern,ymax=max_y_pattern,pattern=pattern),
-                                           alpha=.3,fill="grey")+
+                          alpha=.3,fill="grey")+
         scale_fill_manual(values=color_graph)+
         scale_pattern_manual(values = c("N" = "none", "P" = "stripe")) 
       
@@ -844,7 +1102,7 @@ Plot_with_limitation=function(data,driver="ID",y_variable){
         geom_rect(data=d_rect,aes(xmin=min_x,xmax=max_x,ymin=min_y,ymax=max_y,fill=color),
                   alpha=.3)+
         geom_rect_pattern(data=NULL,aes(xmin=min_NF,xmax=max_NF,ymin=min_y_pattern,ymax=max_y_pattern,pattern=data$Limitation_NF[1]),
-                                        alpha=.3,fill="grey")+
+                          alpha=.3,fill="grey")+
         scale_fill_manual(values=color_graph)+
         scale_pattern_manual(values = c("N" = "none", "P" = "stripe"))
       
@@ -862,7 +1120,7 @@ Plot_with_limitation=function(data,driver="ID",y_variable){
         geom_rect(data=d_rect,aes(xmin=min_x,xmax=max_x,ymin=min_y,ymax=max_y,fill=color),
                   alpha=.3)+
         geom_rect_pattern(data=d_rect2,aes(xmin=min_x,xmax=max_x,ymin=min_y_pattern,ymax=max_y_pattern,pattern=pattern),
-                                           alpha=.3,fill="grey")+
+                          alpha=.3,fill="grey")+
         scale_fill_manual(values=color_graph)+
         scale_pattern_manual(values = c("N" = "none", "P" = "stripe")) 
       
@@ -888,7 +1146,7 @@ Plot_with_limitation=function(data,driver="ID",y_variable){
         geom_rect(data=d_rect,aes(xmin=min_x,xmax=max_x,ymin=min_y,ymax=max_y,fill=color),
                   alpha=.3)+
         geom_rect_pattern(data=NULL,aes(xmin=min_NF,xmax=max_NF,ymin=min_y_pattern,ymax=max_y_pattern,pattern=data$Limitation_NF[1]),
-                                        alpha=.3,fill="grey")+
+                          alpha=.3,fill="grey")+
         scale_fill_manual(values=color_graph)+
         scale_pattern_manual(values = c("N" = "none", "P" = "stripe"))
       
@@ -906,7 +1164,7 @@ Plot_with_limitation=function(data,driver="ID",y_variable){
         geom_rect(data=d_rect,aes(xmin=min_x,xmax=max_x,ymin=min_y,ymax=max_y,fill=color),
                   alpha=.3)+
         geom_rect_pattern(data=d_rect2,aes(xmin=min_x,xmax=max_x,ymin=min_y_pattern,ymax=max_y_pattern,pattern=pattern),
-                                           alpha=.3,fill="grey")+
+                          alpha=.3,fill="grey")+
         scale_fill_manual(values=color_graph)+
         scale_pattern_manual(values = c("N" = "none", "P" = "stripe")) 
       
@@ -932,7 +1190,7 @@ Plot_with_limitation=function(data,driver="ID",y_variable){
         geom_rect(data=d_rect,aes(xmin=min_x,xmax=max_x,ymin=min_y,ymax=max_y,fill=color),
                   alpha=.3)+
         geom_rect_pattern(data=NULL,aes(xmin=min_NF,xmax=max_NF,ymin=min_y_pattern,ymax=max_y_pattern,pattern=data$Limitation_NF[1]),
-                                        alpha=.3,fill="grey")+
+                          alpha=.3,fill="grey")+
         scale_fill_manual(values=color_graph)+
         scale_pattern_manual(values = c("N" = "none", "P" = "stripe"))
       
@@ -950,7 +1208,7 @@ Plot_with_limitation=function(data,driver="ID",y_variable){
         geom_rect(data=d_rect,aes(xmin=min_x,xmax=max_x,ymin=min_y,ymax=max_y,fill=color),
                   alpha=.3)+
         geom_rect_pattern(data=d_rect2,aes(xmin=min_x,xmax=max_x,ymin=min_y_pattern,ymax=max_y_pattern,pattern=pattern),
-                                           alpha=.3,fill="grey")+
+                          alpha=.3,fill="grey")+
         scale_fill_manual(values=color_graph)+
         scale_pattern_manual(values = c("N" = "none", "P" = "stripe")) 
       
@@ -962,6 +1220,8 @@ Plot_with_limitation=function(data,driver="ID",y_variable){
 }
 
 Get_phi_functions=function(data,param){
+  
+  Limitations=Get_limitation(data,param)
   
   if (nrow(data)>1){data=Get_equilibrium(data,param)}
   
@@ -1014,9 +1274,22 @@ Get_phi_functions=function(data,param){
   phi_N =  (( (alpha_B - alpha_D) * beta_B) / ((beta_B - beta_D) * alpha_B)) * phi_P      # immobilization/mineralization of N
   phi_D =  beta_B  * phi_P / (beta_B  - beta_D)      # decomposition of detritus
   
+  prod_decompo=ifelse(Limitations$Limitation_Decompo=="c",
+         phi_D,
+         ifelse(Limitations$Limitation_Decompo=="N",phi_N,phi_P))
+  
+  total_production=gO_NP+gF_P+prod_decompo
+  
   return(tibble(phi_P=phi_P,
                 phi_N=phi_N,
-                phi_D=phi_D))
+                phi_D=phi_D,
+                gO_NP=gO_NP,
+                gF_P=gF_P,
+                Fraction_prod_decompo=prod_decompo/total_production,
+                Fraction_prod_NF=gO_NP/total_production,
+                Fraction_prod_F=gF_P/total_production,
+                Total_production=total_production
+  ))
 }
 
 Get_states=function(data){
@@ -1078,6 +1351,94 @@ Plot_D=function(d){
   par(mfrow=c(1,1))
 }
 
+Distance_to_homeostasis=function(d,param){
+  
+  CN_min=min(1/param$alpha_B,1/param$alpha_F,1/param$alpha_O)
+  CP_min=min(1/param$beta_B,1/param$beta_F,1/param$beta_O)
+  NP_min=min(param$alpha_B/param$beta_B,param$alpha_F/param$beta_F,param$alpha_O/param$beta_O)
+  CN_max=max(1/param$alpha_B,1/param$alpha_F,1/param$alpha_O)
+  CP_max=max(1/param$beta_B,1/param$beta_F,1/param$beta_O)
+  NP_max=max(param$alpha_B/param$beta_B,param$alpha_F/param$beta_F,param$alpha_O/param$beta_O)
+  
+  CNP=Get_CNP(d,param)
+  
+  Distance_to_homeostasis=sqrt(CNP$CN_seston)
+  
+  
+  
+}
+
+Deviation_Redfield=function(d){
+  
+  d=d%>%
+    add_column(.,
+               CP_deviation=(d$CP_seston-106)**2,
+               CN_deviation=(d$CN_seston-(106)/16)**2,
+               NP_deviation=(d$NP_seston-16)**2)
+  
+  d$dist_from_Redfield=unlist(sapply(1:nrow(d),function(x){
+    return(sqrt(d$NP_deviation[x]+d$CN_deviation[x]+d$CP_deviation[x]))}))
+  return(d)
+}
+
+Plot_CNP_repartition=function(d){
+  
+  
+  colors=c("Decomposers"="#FDC070",
+           "Fixers"="#76BB70",
+           "Non-fixers"="#5D9BF3",
+           "Detritus"="#F18181",
+           "Inorganic"="grey")
+  
+  data_seston = data.frame(Species=rep(c("Decomposers","Fixers","Non-fixers"),3),
+                           Resource=rep(c("C","N","P"),each=3),
+                           value=c(d$Decomposers_C,d$Fixers_C,d$Non_fixers_C,
+                                   d$Decomposers_N,d$Fixers_N,d$Non_fixers_N,
+                                   d$Decomposers_P,d$Fixers_P,d$Non_fixers_P))
+
+  data_seston_detritus = data.frame(Species=rep(c("Decomposers","Fixers","Non-fixers","Detritus"),3),
+                           Resource=rep(c("C","N","P"),each=4),
+                           value=c(d$Decomposers_C,d$Fixers_C,d$Non_fixers_C,d$Detritus_C,
+                                   d$Decomposers_N,d$Fixers_N,d$Non_fixers_N,d$Detritus_N,
+                                   d$Decomposers_P,d$Fixers_P,d$Non_fixers_P,d$Detritus_P))
+  
+  data_total = data.frame(Species=c(rep(c("Decomposers","Fixers","Non-fixers","Detritus","Inorganic"),2)),
+                           Resource=c(rep(c("N","P"),each=5)),
+                           value=c(d$Decomposers_N,d$Fixers_N,d$Non_fixers_N,d$Detritus_N,d$Nitrogen,
+                                   d$Decomposers_P,d$Fixers_P,d$Non_fixers_P,d$Detritus_P,d$Phosphorous))
+  
+  d_tot=rbind(data_seston%>%add_column(.,Type="Seston organic"),
+              data_seston_detritus%>%add_column(.,Type="Seston with detritus"),
+              data_total%>%add_column(.,Type="Total"))
+  
+  p1=ggplot(d_tot, aes(fill=Species, y=value, x=interaction(Type,Resource))) + 
+    geom_bar(position="fill", stat="identity")+
+    the_theme2+labs(x="",y="",fill="")+
+    scale_fill_manual(values = colors)+
+    theme(axis.text.x = element_text(angle = 60,hjust = 1))
+  
+  
+  d_aggregate=filter(d_tot,Type!="Total")%>%
+    dplyr::group_by(., Resource,Type)%>%
+    dplyr::summarise(., .groups = "keep",Sum_resource=sum(value))%>%
+    dplyr::arrange(., Type)
+  
+  d_aggregate$Sum_resource[1:3]/d_aggregate$Sum_resource[3]
+
+  p2=ggplot(d_aggregate,aes(fill=Resource, y=Sum_resource, x=interaction(Type))) + 
+    geom_bar(position="fill", stat="identity")+
+    the_theme2+labs(x="",y="",fill="")+
+    scale_fill_manual(values = c("C"="#EACDA0","N"="#B9D6FF","P"="#F0B8FF"))+
+    theme(axis.text.x = element_text(angle = 60,hjust = 1),
+          axis.text.y = element_blank(),axis.ticks.y = element_blank())+
+    annotate("text",x=c(1,2),y=c(.5,.5),
+             label=c(paste0(round(d_aggregate$Sum_resource[1:3]/d_aggregate$Sum_resource[3],0),collapse = ":"),
+                     paste0(round(d_aggregate$Sum_resource[4:6]/d_aggregate$Sum_resource[6],0),collapse = ":")))
+
+  return(list(p1,p2))
+}
+
+
 # ------------------------------ Indirect effects ----
 
 Indirect_effects=function(data,param){
@@ -1093,9 +1454,9 @@ Indirect_effects=function(data,param){
   jacobian=rootSolve::jacobian.full(data,ode_lake_CNP_R,parms = param,pert = 1e-9)
   jacobian=jacobian[-which(colnames(jacobian) %in% c("BN","BP","FN","FP","ON","OP")),
                     -which(colnames(jacobian) %in% c("BN","BP","FN","FP","ON","OP"))]
-
+  
   colnames(jacobian)=rownames(jacobian)=c("B","F","O","DC","DN","DP","N","P")
-
+  
   
   if (any(rowSums(jacobian)==0 | colSums(jacobian)==0)){
     to_remove_row=which(rowSums(jacobian)==0)
@@ -1103,7 +1464,7 @@ Indirect_effects=function(data,param){
     jacobian=jacobian[-to_remove_row,-to_remove_col]
     
   }
-    
+  
   sensitivity=-solve(jacobian)
   
   save_J=jacobian
@@ -1118,7 +1479,7 @@ Indirect_effects=function(data,param){
           name_organism2 %in% colnames(sensitivity)){
         assign(paste0("indirect_",name_organism1,"_on_",name_organism2),
                sensitivity[name_organism2,name_organism1]
-               )
+        )
       }else{
         assign(paste0("indirect_",name_organism1,"_on_",name_organism2),
                NA
@@ -1128,7 +1489,7 @@ Indirect_effects=function(data,param){
     }
   }
   
-
+  
   #Since there is no direct effects between species, net effects correspond to indirect effects
   
   d_effect=rbind(d_effect,tibble(indirect_B_on_F=indirect_B_on_F,
@@ -1182,17 +1543,15 @@ Plot_net_effects=function(data,param,type="A_to_I",compute_effects=T){
   
   if (compute_effects){
     data=cbind(Indirect_effects(data,param)%>%
-      filter(., Type==type),
-      Get_CNP(data,param),
-      Get_limitation(data,param)
-      )
+                 filter(., Type==type),
+               Get_CNP(data,param),
+               Get_limitation(data,param)
+    )
   }
   
   Matrix_indirect=matrix(c(0,data$indirect_B_on_O,data$indirect_B_on_F,
                            data$indirect_O_on_B,0,data$indirect_O_on_F,
-                           data$indirect_F_on_B,data$indirect_F_on_O,0
-                           ),
-                         3,3,byrow = T)
+                           data$indirect_F_on_B,data$indirect_F_on_O,0),3,3,byrow = T)
   colnames(Matrix_indirect)=rownames(Matrix_indirect)=c("B","NF","F")
   
   graph_indirect=graph_from_adjacency_matrix(Matrix_indirect,weighted = T,mode = "directed",diag = F)  
@@ -1205,6 +1564,49 @@ Plot_net_effects=function(data,param,type="A_to_I",compute_effects=T){
                             "#F0B8FF")
   
   plot(graph_indirect,layout=layout.circle,edge.curved=.3,
-       vertex.size=55,edge.width=10*E(graph_indirect)$weight,
+       vertex.size=6*as.numeric(data[,c("Decomposers_C","Non_fixers_C","Fixers_C")]),
+       edge.width=10*E(graph_indirect)$weight,
        label.cex=25)
 }
+
+# ------------------------------ Functions for data ----
+
+Normalize_data=function(d){
+  return(
+    d%>%
+      dplyr::mutate(.,
+                    Area=log(.$Area),
+                    Slope=log(.$Slope+1),
+                    Arable=log(.$Arable+1),
+                    Allochot_flux=log(.$Allochot_flux+1),
+                    Temperature=log(.$Temperature+1),
+                    N_deposition=log(.$N_deposition+1),
+                    Altitude=sqrt(.$Altitude),
+                    Bog=Boxcox_transform(.$Bog),
+                    Tree_cover=sqrt(.$Tree_cover),
+                    Herb_cover=.$Herb_cover,
+                    Runoff=log(.$Runoff+1),
+                    Modis=sqrt(.$Modis),
+                    Drainage_area=log(.$Drainage_area+1),
+                    Lake_shape=sqrt(.$Lake_shape),
+                    
+      )
+  )
+}
+
+Standardize_data=function(d){
+  return(
+    as_tibble(apply(d,2,function(x){return((x-mean(x,na.rm = T))/sd(x,na.rm = T))}))
+  )
+}
+
+
+Boxcox_transform=function(x){
+  library(forecast)
+  return(BoxCox(x+min(x,na.rm = T)+.01,lambda = "auto"))  
+}
+
+
+
+
+
