@@ -30,7 +30,6 @@ Get_data_thresholds=function(d,color_label=c("A","A","B","A")){
   
 }
 
-
 scaling_vector_x_0_1=function(x){
   return((x-min(x,na.rm = T))/(max(x,na.rm = T)-min(x,na.rm = T)))
 }
@@ -52,11 +51,45 @@ Add_limitation_label=function(p){
   )
 }
 
+
 # ------------------ Final figures ----
+
+## DATA ----
+
+d=read.table("./data/Empirical/Stoichio_flows.csv",sep=";")
+
+p=ggplot(d%>%
+           mutate(.,Chemical=recode_factor(Chemical,"NP"="N:P of exported subsidies",
+                                           "CP"="C:P of exported subsidies",
+                                           "CN"="C:N of exported subsidies")),
+         aes(x=Exporter_ecosyst,y=Ratio,shape=Mattyp1))+
+  geom_boxplot(aes(fill=Exporter_ecosyst,group=Exporter_ecosyst),width=0.4,outlier.shape = NA,color="white",
+               position = position_dodge(width = 1),alpha=.4)+ 
+  geom_point(aes(color=Exporter_ecosyst),position=position_jitterdodge(dodge.width=.5,jitter.width=.03),size=2)+
+  geom_hline(data=tibble(x=1:3,
+                         Chemical=rep(c("N:P of exported subsidies","C:P of exported subsidies","C:N of exported subsidies"),each=1),y=c(116/16,116,16),
+                         Exporter_ecosyst=rep(c(""),3),
+                         Mattyp1=""),
+             aes(x=x,y=y,yintercept = y,group=Exporter_ecosyst))+
+  geom_text(data=tibble(x=rep(1:2,3),
+                        Chemical=rep(c("N:P of exported subsidies","C:P of exported subsidies","C:N of exported subsidies"),each=2),y=1,
+                        Exporter_ecosyst=rep(c("Forest","Grassland"),3),
+                        label=paste0("n = ",c(46,6,65,9,104,19)),
+                        Mattyp1=""),
+            aes(x=x,y=y,label=label,group=Exporter_ecosyst),size=3.5)+
+  labs(x="",fill="",y="",shape="",color="",shape="")+scale_y_log10()+
+  scale_fill_manual(values=c("#C4DC93","#3D7543"))+
+  scale_color_manual(values=c("#C4DC93","#3D7543"))+
+  facet_wrap(.~Chemical,scales = "free",switch = "y",nrow = 1)+
+  the_theme2+theme(axis.title.x = element_blank())+
+  guides(color=F,fill=F)+
+  theme(strip.placement = "outside")
+
+ggsave("./Figures/Data_empirical.pdf",p,width = 9,height = 4)
 
 ## Along gradient of ID: densities, feedbacks, niche, CNP seston ----
 
-d=read.table("../Table/Simulation_allochtonous.csv",sep=";")%>%
+d=read.table("./data/Simulations/Simulation_allochtonous.csv",sep=";")%>%
   mutate(., 
          alpha_A=ifelse(alpha_A==.02,"low","high"),
          beta_A=ifelse(beta_A==.002,"low","high"),
@@ -101,7 +134,7 @@ p1=ggplot(NULL)+
   scale_color_manual(values=c("#FFA963","#80BFB5","#5F9203"),labels=c("Decomposers","Non-fixers","Fixers"))
 
 
-ggsave("../Figures/Final_figs/Along_ID_gradient_density.pdf",Add_limitation_label(p1),width = 8,height = 7)
+ggsave("./Figures/Along_ID_gradient_density.pdf",Add_limitation_label(p1),width = 8,height = 7)
 
 
 p1=ggplot(NULL)+
@@ -127,7 +160,7 @@ p1=ggplot(NULL)+
                               expression(paste(beta[B]," - ",beta[D])),
                               "Nitrogen/Phosphorus"))
 
-ggsave("../Figures/Final_figs/Along_ID_gradient_mecanisms.pdf",Add_limitation_label(p1),width = 8,height = 7)
+ggsave("./Figures/SI/Along_ID_gradient_mecanisms.pdf",Add_limitation_label(p1),width = 8,height = 7)
 
 
 # Indirect effects
@@ -173,7 +206,7 @@ p1=ggplot(NULL)+
 
 
 
-ggsave("../Figures/Final_figs/Along_ID_gradient_indirect.pdf",p1,width = 8,height = 7)
+ggsave("./Figures/Along_ID_gradient_indirect.pdf",p1,width = 8,height = 7)
 
 p1=ggplot(NULL)+
   geom_rect(data=Get_data_thresholds(d,c("B","A","A","C")),
@@ -195,11 +228,11 @@ p1=ggplot(NULL)+
   scale_fill_manual(values=c("A"="#A7C3D6","B"="#AA8DB5","C"="transparent"))+
   scale_color_manual(values=c("black","blue"),labels=c("N:C detritus","P:C detritus"))
 
-ggsave("../Figures/Final_figs/Along_ID_gradient_NC_PC.pdf",Add_limitation_label(p1),width = 7,height = 7)
+ggsave("./Figures/SI/Along_ID_gradient_NC_PC.pdf",Add_limitation_label(p1),width = 7,height = 7)
 
 #Computing changes in species niche' as a proxy of indirect effects
 
-d=read.table("../Table/Simulation_allochtonous.csv",sep=";")%>%
+d=read.table("./data/Simulations/Simulation_allochtonous.csv",sep=";")%>%
   mutate(., 
          alpha_A=ifelse(alpha_A==.02,"low","high"),
          beta_A=ifelse(beta_A==.002,"low","high"),
@@ -208,7 +241,7 @@ d=read.table("../Table/Simulation_allochtonous.csv",sep=";")%>%
   dplyr::filter(., Simulation_ID==3)
 
 table(d$Limitation_Decompo)
-d2=read.table("../Table/Simulation_allochtonous_species_alone.csv",sep=";")%>%
+d2=read.table("./data/Simulations/Simulation_allochtonous_species_alone.csv",sep=";")%>%
   mutate(., 
          alpha_A=ifelse(alpha_A==.02,"low","high"),
          beta_A=ifelse(beta_A==.002,"low","high"),
@@ -249,11 +282,11 @@ p1=ggplot(NULL)+
   scale_fill_manual(values=c("A"="#A7C3D6","B"="#AA8DB5","C"="transparent"))+
   scale_color_manual(values=c("#FFA963","#80BFB5","#5F9203"),labels=c("Decomposers","Non-fixers","Fixers"))
 
-ggsave("../Figures/Final_figs/Along_ID_gradient_niche.pdf",Add_limitation_label(p1)+ylim(-.5,2),width = 8,height = 7)
+ggsave("./Figures/SI/Along_ID_gradient_niche.pdf",Add_limitation_label(p1)+ylim(-.5,2),width = 8,height = 7)
 
 
 
-d=read.table("../Table/Simulation_allochtonous.csv",sep=";")%>%
+d=read.table("./data/Simulations/Simulation_allochtonous.csv",sep=";")%>%
   dplyr::mutate(., 
                 beta_diff=.$alpha_B-.$PC_detritus,
                 alpha_diff=.$beta_B-.$NC_detritus)%>%
@@ -328,7 +361,7 @@ p_tot=ggarrange(p4+ggtitle(" Nitrogen rich flows"),
                 p2+ggtitle(" Carbon rich flows"),
                 p3+ggtitle(" Nutrient rich flows"),ncol=2,nrow=2)
 
-ggsave("../Figures/Final_figs/Along_ID_gradient_CNP.pdf",p_tot,width = 12,height = 7)
+ggsave("./Figures/Along_ID_gradient_CNP.pdf",p_tot,width = 12,height = 7)
 
 
 d2=dplyr::filter(d)%>%
@@ -350,7 +383,7 @@ p1=ggplot(d2)+
   scale_fill_manual(values=c("#80BFB5","#FFA963","#5F9203","brown"),
                     labels=c("Fixers","Decomposers","Non-fixers","Detritus"))
 
-ggsave("../Figures/Final_figs/Along_ID_gradient_stacked.pdf",p1,width = 8,height = 7)
+ggsave("./Figures/Along_ID_gradient_stacked.pdf",p1,width = 8,height = 7)
 
 
 
@@ -359,7 +392,7 @@ Compute_slope=function(CP,beta){
   return(unlist(as.numeric(coef(lm(1/CP~beta))[2])))
 }
 
-d=rbind(read.table("../Table/Simulation_allochtonous_alpha_beta_A.csv",sep=";")%>%
+d=rbind(read.table("./data/Simulations/Simulation_allochtonous_alpha_beta_A.csv",sep=";")%>%
           dplyr::mutate(., 
                         beta_diff=.015-.$PC_detritus,
                         alpha_diff=.15-.$NC_detritus)%>%
@@ -369,7 +402,7 @@ d=rbind(read.table("../Table/Simulation_allochtonous_alpha_beta_A.csv",sep=";")%
           dplyr::group_by(., ID,Limitation_Decompo)%>%
           dplyr::do(., slope=Compute_slope(.$CP_seston,.$beta_A))%>%
           add_column(., Ratio="P:C ratio"),
-        read.table("../Table/Simulation_allochtonous_alpha_beta_A.csv",sep=";")%>%
+        read.table("./data/Simulations/Simulation_allochtonous_alpha_beta_A.csv",sep=";")%>%
           dplyr::mutate(., 
                         beta_diff=.015-.$PC_detritus,
                         alpha_diff=.15-.$NC_detritus)%>%
@@ -404,7 +437,7 @@ p=ggplot(d)+
 p_legend=get_legend(p+theme(legend.box = "vertical"))
 
 
-d=read.table("../Table/Simulation_allochtonous_alpha_beta_A.csv",sep=";")%>%
+d=read.table("./data/Simulations/Simulation_allochtonous_alpha_beta_A.csv",sep=";")%>%
   dplyr::mutate(., 
                 beta_diff=.015-.$PC_detritus,
                 alpha_diff=.15-.$NC_detritus)%>%
@@ -477,7 +510,7 @@ p21=ggplot(d%>%
 
 
 
-ggsave("../Figures/Final_figs/Variation_NC_seston_input_all_species.pdf",
+ggsave("./Figures/Variation_NC_seston_input_all_species.pdf",
        ggarrange(
          ggarrange(
            ggarrange(
@@ -492,7 +525,7 @@ ggsave("../Figures/Final_figs/Variation_NC_seston_input_all_species.pdf",
 ## Other indirect effects ----
 
 
-d=read.table("../Table/Simulation_allochtonous_I_to_A.csv",sep=";")%>%
+d=read.table("./data/Simulations/Simulation_allochtonous_I_to_A.csv",sep=";")%>%
   mutate(., 
          alpha_A=ifelse(alpha_A==.02,"low","high"),
          beta_A=ifelse(beta_A==.002,"low","high"),
@@ -553,12 +586,12 @@ p1=ggplot(NULL)+
                          x=c(10,10,20,32),y=c(.2,.2,.2,.2),label=rep("C-limited",4)),
              aes(x=x,y=y,label=label))+ylim(-.28,.22)+xlim(0,65)
 
-ggsave("../Figures/Final_figs/SI/Along_ID_gradient_indirect_other.pdf",p1,width = 8,height = 7)
+ggsave("./Figures/SI/Along_ID_gradient_indirect_other.pdf",p1,width = 8,height = 7)
 
 
 # ------------------ 2 species: decomposers-fixers ----
 
-d=read.table("../Table/2_species/Simulation_fixers_and_decomposers_2D_quality_quantity.csv",sep=";")%>%
+d=read.table("./data/Simulations/Simulation_fixers_and_decomposers_2D_quality_quantity.csv",sep=";")%>%
   dplyr::filter(., Simulation_ID=="Beta_vary",beta_A%in%c(.002,.012))%>%
   mutate(., 
          alpha_A=ifelse(alpha_A==.02,"low","high"),
@@ -598,7 +631,7 @@ p1=ggplot(NULL)+
 
 
 
-ggsave("../Figures/2_species/Decomposers_fixers_PC_detritus.pdf",p1,width =  8,height = 7)
+ggsave("./Figures/SI/Decomposers_fixers_PC_detritus.pdf",p1,width =  8,height = 7)
 
 
 d2=dplyr::filter(d)%>%
@@ -619,7 +652,7 @@ p1=ggplot(d2)+
   scale_fill_manual(values=c("#80BFB5","#FFA963","brown"),
                     labels=c("Fixers","Decomposers","Detritus"))
 
-ggsave("../Figures/2_species/Along_ID_gradient_stacked_fixers_and_decomposers.pdf",p1,width = 8,height = 7)
+ggsave("./Figures/SI/Along_ID_gradient_stacked_fixers_and_decomposers.pdf",p1,width = 8,height = 7)
 
 
 
@@ -656,10 +689,10 @@ p1=ggplot(NULL)+
   guides(color=guide_legend(ncol=2))
 
 
-ggsave("../Figures/2_species/Along_ID_gradient_indirect_fix_decompo.pdf",p1,width = 8,height = 7)
+ggsave("./Figures/SI/Along_ID_gradient_indirect_fix_decompo.pdf",p1,width = 8,height = 7)
 
 
-d=read.table("../Table/2_species/Simulation_fixers_and_decomposers_2D_quality_quantity.csv",sep=";")%>%
+d=read.table("./data/Simulations/Simulation_fixers_and_decomposers_2D_quality_quantity.csv",sep=";")%>%
   dplyr::mutate(., 
                 beta_diff=.015-.$PC_detritus,
                 alpha_diff=.15-.$NC_detritus)
@@ -710,7 +743,7 @@ p21=ggplot(d%>%
        y=expression(paste("Seston N:C ratio (",alpha[seston],")")))+
   the_theme2
 
-ggsave("../Figures/2_species/Variation_NC_seston_input_fixer_and_decomposers.pdf",
+ggsave("./Figures/SI/Variation_NC_seston_input_fixer_and_decomposers.pdf",
        ggarrange(p11,p21,nrow=2,labels = letters[1:2],common.legend = T,legend="bottom",heights = c(1,1.05)),
        width = 7,height = 8)
 
@@ -718,7 +751,7 @@ ggsave("../Figures/2_species/Variation_NC_seston_input_fixer_and_decomposers.pdf
 
 # ------------------ 2 species: decomposers-non.fixers ----
 
-d=read.table("../Table/2_species/Simulation_Non_fixers_and_decomposers_2D_quality_quantity.csv",sep=";")%>%
+d=read.table("./data/Simulations/Simulation_Non_fixers_and_decomposers_2D_quality_quantity.csv",sep=";")%>%
   dplyr::filter(., Simulation_ID=="Beta_vary",beta_A%in%c(.002,.012))%>%
   mutate(., 
          alpha_A=ifelse(alpha_A==.02,"low","high"),
@@ -758,7 +791,7 @@ p1=ggplot(NULL)+
   scale_color_manual(values=c("#FFA963","#80BFB5"),labels=c("Decomposers","Non-fixers"))
 
 
-ggsave("../Figures/2_species/Decomposers_non_fixers_PC_NC_detritus.pdf",p1,width =  8,height = 7)
+ggsave("./Figures/SI/Decomposers_non_fixers_PC_NC_detritus.pdf",p1,width =  8,height = 7)
 
 p1=ggplot(NULL)+
   geom_rect(data=Get_data_thresholds(d,c("B","A","A","C")),
@@ -784,7 +817,7 @@ p1=ggplot(NULL)+
   guides(color=guide_legend(ncol=2))
 
 
-ggsave("../Figures/2_species/Along_ID_gradient_indirect_nonfix_decompo.pdf",p1,width = 8,height = 7)
+ggsave("./Figures/SI/Along_ID_gradient_indirect_nonfix_decompo.pdf",p1,width = 8,height = 7)
 
 
 
@@ -806,11 +839,11 @@ p1=ggplot(d2)+
   scale_fill_manual(values=c("#FFA963","#5F9203","brown"),
                     labels=c("Decomposers","Non-fixers","Detritus"))
 
-ggsave("../Figures/2_species/Along_ID_gradient_stacked_non_fixers_and_decomposers.pdf",p1,width = 8,height = 7)
+ggsave("./Figures/SI/Along_ID_gradient_stacked_non_fixers_and_decomposers.pdf",p1,width = 8,height = 7)
 
 
 
-d=read.table("../Table/2_species/Simulation_Non_fixers_and_decomposers_2D_quality_quantity.csv",sep=";")%>%
+d=read.table("./data/Simulations/Simulation_Non_fixers_and_decomposers_2D_quality_quantity.csv",sep=";")%>%
   dplyr::mutate(., 
                 beta_diff=.015-.$PC_detritus,
                 alpha_diff=.15-.$NC_detritus)
@@ -862,7 +895,7 @@ p21=ggplot(d%>%
   the_theme2
 
 
-ggsave("../Figures/2_species/Variation_NC_seston_input_nonfixer_and_decomposers.pdf",
+ggsave("./Figures/SI/Variation_NC_seston_input_nonfixer_and_decomposers.pdf",
        ggarrange(p11,p21,nrow=2,labels = letters[1:2],common.legend = T,legend="bottom",heights = c(1,1.05)),
        width = 7,height = 8)
 
@@ -1151,7 +1184,8 @@ p_tot=ggarrange(p2+labs(y="")+ggtitle("Seasonal change of allochtonous P:C"),
                 p4+labs(y="")+ggtitle("Transient increase of allochtonous P:C"),nrow = 2)
 
 
-ggsave("../Figures/Final_figs/SI/Seasonal_change.pdf",p_tot,width = 9,height = 10)
+ggsave("./Figures/SI/Seasonal_change.pdf",p_tot,width = 9,height = 10)
+
 
 
 

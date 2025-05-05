@@ -22,22 +22,6 @@ julia_setup()
 de = diffeq_setup()
 julia_library("DifferentialEquations")
 
-the_theme = theme_classic() + theme(
-  legend.position = "bottom",
-  strip.background = element_rect(fill = "#CCE8D8"),
-  strip.text.y = element_text(size = 10, angle = -90),
-  strip.text.x = element_text(size = 8),
-  legend.text = element_text(size = 10), text = element_text(family = "NewCenturySchoolbook")
-)
-
-
-
-the_theme=theme_classic()+theme(legend.position = "bottom",
-                                strip.background = element_rect(fill = "#CCE8D8"),
-                                strip.text.y = element_text(size = 10, angle = -90),
-                                strip.text.x = element_text(size = 8),axis.text = element_text(size=11),axis.title = element_text(size=13),
-                                legend.text = element_text(size = 10),text = element_text(family = "NewCenturySchoolbook"))
-
 
 pal=colorRampPalette(c("#5C7ECC","#32C4E2","#7DCE9A","#B4CE7D","#EFDD35","#FFB700"))
 pal_aqua=colorRampPalette((c("white","#CFDCDE","#A4DEE6","#49CADC","#3B7FE0","#193C82","#060D61")))
@@ -71,9 +55,10 @@ the_theme2 = theme_classic() + theme(
 
 ## Creating folders
 
-dir.create("../Figures/", showWarnings = FALSE)
-dir.create("../Figures/SI", showWarnings = FALSE)
-dir.create("../Table/", showWarnings = FALSE)
+dir.create("./Figures",showWarnings = F)
+dir.create("./Figures/SI",showWarnings = F)
+dir.create("./data/Empirical/",showWarnings = F)
+dir.create("./data/Simulations/",showWarnings = F)
 
 `%!in%` = Negate(`%in%`)
 
@@ -316,7 +301,7 @@ function ode_lake_CNP_regulation(du, u, p, t)
 
 
     if (DC_==1) #donnor controlled
-      gO_NP = copy((muO * min(P, N))) # growth rate non-fixer
+      gO_NP = copy((muO * min((alpha_O/beta_O)*P, N))) # growth rate non-fixer
       gF_P  = copy((muF * P))             # growth rate fixer
       uptake_D = copy(eB * aD * DC)             # uptake detritus
       uptake_N = copy(aN * N)                   # uptake nitrogen
@@ -324,7 +309,7 @@ function ode_lake_CNP_regulation(du, u, p, t)
 
     else
       if functional_response_phyto==1
-         gO_NP = copy(muO * min(P, N) * OC)  # growth rate non-fixer
+         gO_NP = copy(muO * min((alpha_O/beta_O)*P, N) * OC)  # growth rate non-fixer
          gF_P  = copy(muF * P * FC)             # growth rate fixer
       else #type 2
          gO_NP = copy(muO * min(P/(kP+P),N/(kN+N)) * OC) # growth rate non-fixer
@@ -406,7 +391,7 @@ ode_lake_CNP_R = function(t,y,param){
     
     if (DC_){ #donnor controlled
       
-      gO_NP = (muO * min(P, N))             # growth rate non-fixer
+      gO_NP = (muO * min((alpha_O/beta_O)*P, N))             # growth rate non-fixer
       gF_P  = (muF * P)                     # growth rate fixer
       uptake_D = (eB * aD * DC)             # uptake detritus
       uptake_N = (aN * N)                   # uptake nitrogen
@@ -415,12 +400,12 @@ ode_lake_CNP_R = function(t,y,param){
     } else{
       if (functional_response_phyto==1){
         
-        gO_NP = muO * min(P, N) * OC     # growth rate non-fixer
+        gO_NP = muO * min((alpha_O/beta_O)*P, N) * OC     # growth rate non-fixer
         gF_P  = muF * P * FC             # growth rate fixer
         
       }else{ #type 2
         
-        gO_NP = muO * min(P/(kP+P),N/(kN+N)) * OC # growth rate non-fixer
+        gO_NP = muO * min((alpha_O/beta_O)*P/(kP+P),N/(kN+N)) * OC # growth rate non-fixer
         gF_P  = (muF * P)/(kP+P) * FC             # growth rate fixer
       }
       uptake_D = eB * aD * DC * BC             # uptake detritus
