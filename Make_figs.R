@@ -56,36 +56,83 @@ Add_limitation_label=function(p){
 
 ## DATA ----
 
-d=read.table("./data/Empirical/Stoichio_flows.csv",sep=";")
+d=read.table("./data/Empirical/Stoichio_flows.csv",sep=";")%>%
+  mutate(.,Chemical=recode_factor(Chemical,"NP"="N:P of exported subsidies",
+                                  "CP"="C:P of exported subsidies",
+                                  "CN"="C:N of exported subsidies"))
 
-p=ggplot(d%>%
-           mutate(.,Chemical=recode_factor(Chemical,"NP"="N:P of exported subsidies",
-                                           "CP"="C:P of exported subsidies",
-                                           "CN"="C:N of exported subsidies")),
-         aes(x=Exporter_ecosyst,y=Ratio,shape=Mattyp1))+
-  geom_boxplot(aes(fill=Exporter_ecosyst,group=Exporter_ecosyst),width=0.4,outlier.shape = NA,color="white",
-               position = position_dodge(width = 1),alpha=.4)+ 
-  geom_point(aes(color=Exporter_ecosyst),position=position_jitterdodge(dodge.width=.5,jitter.width=.03),size=2)+
-  geom_hline(data=tibble(x=1:3,
-                         Chemical=rep(c("N:P of exported subsidies","C:P of exported subsidies","C:N of exported subsidies"),each=1),y=c(116/16,116,16),
-                         Exporter_ecosyst=rep(c(""),3),
-                         Mattyp1=""),
-             aes(x=x,y=y,yintercept = y,group=Exporter_ecosyst))+
-  geom_text(data=tibble(x=rep(1:2,3),
-                        Chemical=rep(c("N:P of exported subsidies","C:P of exported subsidies","C:N of exported subsidies"),each=2),y=1,
-                        Exporter_ecosyst=rep(c("Forest","Grassland"),3),
-                        label=paste0("n = ",c(46,6,65,9,104,19)),
-                        Mattyp1=""),
-            aes(x=x,y=y,label=label,group=Exporter_ecosyst),size=3.5)+
-  labs(x="",fill="",y="",shape="",color="",shape="")+scale_y_log10()+
-  scale_fill_manual(values=c("#C4DC93","#3D7543"))+
-  scale_color_manual(values=c("#C4DC93","#3D7543"))+
-  facet_wrap(.~Chemical,scales = "free",switch = "y",nrow = 1)+
+id=1
+id_convert=3:1
+for (k in unique(d$Chemical)){
+  
+  assign(paste0("p1_",id),
+         ggplot(d%>%dplyr::filter(., Chemical==k),
+                aes(x=Exporter_ecosyst,y=Ratio,shape=Mattyp1))+
+           geom_boxplot(aes(fill=Exporter_ecosyst,group=Exporter_ecosyst),width=0.4,outlier.shape = NA,color="white",
+                        position = position_dodge(width = 1),alpha=.4)+ 
+           geom_point(aes(color=Exporter_ecosyst),position=position_jitterdodge(dodge.width=.5,jitter.width=.03),size=2)+
+           geom_hline(data=tibble(x=1:3,
+                                  Chemical=rep(c("N:P of exported subsidies","C:P of exported subsidies","C:N of exported subsidies"),each=1),y=c(116/16,116,16),
+                                  Exporter_ecosyst=rep(c(""),3),
+                                  Mattyp1="")[id_convert[id],],
+                      aes(x=x,y=y,yintercept = y,group=Exporter_ecosyst))+
+           geom_text(data=tibble(x=rep(1:2,3),
+                                 Chemical=rep(c("N:P of exported subsidies","C:P of exported subsidies","C:N of exported subsidies"),each=2),y=1,
+                                 Exporter_ecosyst=rep(c("Forest","Grassland"),3),
+                                 label=paste0("n = ",c(46,6,65,9,104,19)),
+                                 Mattyp1="")[(2*id_convert[id]-1):(2*id_convert[id]),],
+                     aes(x=x,y=y,label=label,group=Exporter_ecosyst),size=3.5)+
+           labs(x="",fill="",y="",shape="",color="",shape="")+scale_y_log10()+
+           scale_fill_manual(values=c("#C4DC93","#3D7543"))+
+           scale_color_manual(values=c("#C4DC93","#3D7543"))+
+           facet_wrap(.~Chemical,scales = "free",switch = "y",nrow = 1)+
+           the_theme2+theme(axis.title.x = element_blank())+
+           guides(color=F,fill=F)+
+           theme(strip.placement = "outside")
+         )
+  id=id+1
+}
+
+
+d=read.table("./data/Empirical/Stoichio_flows.csv",sep=";")%>%
+  mutate(.,Chemical=recode_factor(Chemical,"NP"="N:P",
+                                  "CP"="C:P",
+                                  "CN"="C:N"))
+d$Deviation=sapply(1:nrow(d),function(x){
+  
+  if (d$Chemical[x]=="C:N"){
+    return((d$Ratio[x]-116/16)/(116/16))
+  }
+  if (d$Chemical[x]=="C:P"){
+    return((d$Ratio[x]-116)/(116))
+  }
+  if (d$Chemical[x]=="N:P"){
+    return((d$Ratio[x]-16)/(16))
+  }
+})
+
+p2=ggplot(d,
+       aes(x=Chemical,y=Deviation))+
+  geom_boxplot(aes(fill=Chemical,group=Chemical),outlier.shape = NA)+ 
+  labs(x="",fill="",y="Relative deviation  \n from the Redfield ratio",shape="",color="",shape="")+
+  scale_fill_manual(values=c("pink","#C5A2D8","lightblue"))+
   the_theme2+theme(axis.title.x = element_blank())+
+  ylim(c(-1,20))+
   guides(color=F,fill=F)+
+  geom_hline(aes(yintercept = 0))+
   theme(strip.placement = "outside")
 
-ggsave("./Figures/Data_empirical.pdf",p,width = 9,height = 4)
+p1=ggarrange(ggarrange(p1_1+theme(legend.position = "none"),
+                       ggarrange(p1_3+theme(legend.position = "none"),get_legend(p1_3),nrow=2,heights = c(1,.2)),
+                       nrow=2,labels = letters[c(1,3)],align = "hv",heights = c(1,1.3)),
+             ggarrange(p1_2+theme(legend.position = "none"),
+                       ggarrange(ggplot()+theme_void(),
+                                 ggarrange(p2,ggplot()+theme_void(),nrow=2,heights = c(1,.28)),
+                                 ncol=2,widths = c(.1,1)),nrow=2,labels = letters[c(2,4)],
+                       align = "v",heights = c(1,1.3)),
+             ncol=2,align = "hv")
+
+ggsave("./Figures/Data_empirical.pdf",p1,width = 8,height = 8)
 
 ## Along gradient of ID: densities, feedbacks, niche, CNP seston ----
 
