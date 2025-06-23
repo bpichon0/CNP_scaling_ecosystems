@@ -17,7 +17,6 @@ x = c(
 )
 
 lapply(x, require, character.only = TRUE)
-
 julia_setup()
 de = diffeq_setup()
 julia_library("DifferentialEquations")
